@@ -11,7 +11,9 @@
     // ====== 工具函數 ======
     function getDefaultMonth() {
         const now = new Date();
-        return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+        // 預設為下一個月，因為排班通常是排下個月的
+        const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+        return `${nextMonth.getFullYear()}-${String(nextMonth.getMonth() + 1).padStart(2, '0')}`;
     }
 
     function formatMonthDisplay(month) {
@@ -199,7 +201,33 @@
         const container = document.getElementById('availability-calendar');
         container.innerHTML = '';
 
-        if (!monthModel || !monthModel.days) return;
+        // 檢查 monthModel 資料
+        if (!monthModel) {
+            console.error('monthModel 為空');
+            container.innerHTML = '<p style="color: #999; text-align: center; padding: 40px;">載入月份資料失敗，請重新整理頁面</p>';
+            return;
+        }
+
+        if (!monthModel.days || monthModel.days.length === 0) {
+            console.error('monthModel.days 為空或無資料');
+            container.innerHTML = '<p style="color: #999; text-align: center; padding: 40px;">此月份沒有資料</p>';
+            return;
+        }
+
+        // 檢查是否有班段規則
+        const hasShifts = monthModel.days.some(day => day.shifts && day.shifts.length > 0);
+        if (!hasShifts) {
+            console.warn('所有天數都沒有班段資料，請確認 ShiftRules 表格已正確設定');
+            container.innerHTML = `
+                <div style="color: #e53935; text-align: center; padding: 40px; background: #ffebee; border-radius: 8px;">
+                    <p style="font-weight: 600; margin-bottom: 8px;">⚠️ 尚未設定班段規則</p>
+                    <p style="font-size: 0.9rem; color: #666;">請先在 Google Sheets 的 ShiftRules 表格中設定班段資料，或執行 setupDatabase() 函數初始化預設資料。</p>
+                </div>
+            `;
+            return;
+        }
+
+        console.log('渲染日曆，共 ' + monthModel.days.length + ' 天');
 
         // 按週分組
         let currentWeek = null;
@@ -226,7 +254,7 @@
         <span class="day-name ${day.isWeekend ? 'weekend' : ''}">週${day.dayName}</span>
       </div>
       <div class="shifts-container">
-        ${day.shifts.map(shift => {
+        ${day.shifts.map((shift, index) => {
                 const isUnavailable = unavailabilityData.unavailabilities.some(
                     u => u.date === day.date && u.ruleId === shift.ruleId
                 );
@@ -236,6 +264,7 @@
               <input type="checkbox" class="shift-checkbox" 
                      data-date="${day.date}" 
                      data-rule="${shift.ruleId}"
+                     data-index="${index}"
                      ${isUnavailable ? 'checked' : ''}>
             </div>
           `;
@@ -244,6 +273,38 @@
     `;
 
             weekDiv.appendChild(dayDiv);
+        });
+
+        // 綁定自動勾選事件
+        bindAutoCheckEvents();
+    }
+
+    /**
+     * 綁定自動勾選事件
+     * 當勾選當日第一個時段時，自動勾選該日所有其他時段
+     */
+    function bindAutoCheckEvents() {
+        const checkboxes = document.querySelectorAll('#availability-calendar .shift-checkbox');
+
+        checkboxes.forEach(checkbox => {
+            checkbox.addEventListener('change', function (e) {
+                const index = parseInt(this.dataset.index);
+                const date = this.dataset.date;
+                const isChecked = this.checked;
+
+                // 只有第一個時段（index === 0）才觸發自動勾選
+                if (index === 0) {
+                    // 找出同一天的所有 checkbox
+                    const sameDayCheckboxes = document.querySelectorAll(
+                        `#availability-calendar .shift-checkbox[data-date="${date}"]`
+                    );
+
+                    // 根據第一個時段的狀態，設定所有時段
+                    sameDayCheckboxes.forEach(cb => {
+                        cb.checked = isChecked;
+                    });
+                }
+            });
         });
     }
 

@@ -33,13 +33,17 @@ function getMonthModel(month) {
       dayOfWeek: dayOfWeek,
       dayName: getDayName(dayOfWeek),
       isWeekend: isWeekend,
-      shifts: shifts.map((s) => ({
-        ruleId: s.ruleId,
-        label: s.label,
-        start: ensureStringTime(s.start),
-        end: ensureStringTime(s.end),
-        hours: calculateHours(s.start, s.end),
-      })),
+      shifts: shifts.map((s) => {
+        const startStr = ensureStringTime(s.start);
+        const endStr = ensureStringTime(s.end);
+        return {
+          ruleId: s.ruleId,
+          label: `${startStr} ~ ${endStr}`,  // 動態生成 label，格式：16:00 ~ 20:00
+          start: startStr,
+          end: endStr,
+          hours: calculateHours(s.start, s.end),
+        };
+      }),
     });
   }
 
@@ -77,6 +81,22 @@ function ensureStringTime(time) {
     return `${h}:${m}`;
   }
   return String(time || "");
+}
+
+/**
+ * 確保 label 為字串格式
+ * 處理 Google Sheets 可能將 '08-12' 誤判為日期的問題
+ */
+function ensureStringLabel(label) {
+  if (label instanceof Date) {
+    // 如果被誤判為日期，嘗試還原成 HH-HH 格式
+    const h = String(label.getHours()).padStart(2, "0");
+    const m = String(label.getMinutes()).padStart(2, "0");
+    // 假設 label 格式是 "開始時-結束時"，只取小時
+    // 由於被誤判為日期，我們無法完全還原，所以直接返回時間部分
+    return `${h}:${m}`;
+  }
+  return String(label || "");
 }
 
 /**

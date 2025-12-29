@@ -99,3 +99,47 @@ function createSheetIfNotExists(ss, sheetName, headers) {
   }
   return sheet;
 }
+
+/**
+ * 重建 ShiftRules 資料（修復日期格式問題）
+ * 執行此函數會清除現有班段規則並重新寫入正確格式的預設值
+ */
+function resetShiftRules() {
+  const ss = getSpreadsheet();
+  const rulesSheet = ss.getSheetByName(CONFIG.SHEETS.SHIFT_RULES);
+  
+  if (!rulesSheet) {
+    console.error('找不到 ShiftRules 工作表，請先執行 setupDatabase()');
+    return;
+  }
+  
+  // 清除現有資料（保留標題）
+  const lastRow = rulesSheet.getLastRow();
+  if (lastRow > 1) {
+    rulesSheet.getRange(2, 1, lastRow - 1, 5).clearContent();
+  }
+  
+  // 設定整個資料範圍為純文字格式
+  rulesSheet.getRange(2, 1, 10, 5).setNumberFormat('@');
+  
+  // 寫入預設班段規則
+  const defaultRules = [
+    ['W1', 'weekday', '17:00', '21:00', '17-21'],
+    ['W2', 'weekday', '21:00', '24:00', '21-24'],
+    ['H1', 'weekend', '08:00', '12:00', '08-12'],
+    ['H2', 'weekend', '12:00', '16:00', '12-16'],
+    ['H3', 'weekend', '16:00', '20:00', '16-20'],
+    ['H4', 'weekend', '20:00', '24:00', '20-24']
+  ];
+  
+  rulesSheet.getRange(2, 1, defaultRules.length, 5).setValues(defaultRules);
+  
+  console.log('已重建 ShiftRules 資料，共 ' + defaultRules.length + ' 筆');
+  
+  try {
+    const ui = SpreadsheetApp.getUi();
+    ui.alert('完成！', '已重建班段規則資料，共 ' + defaultRules.length + ' 筆。', ui.ButtonSet.OK);
+  } catch (e) {
+    // 如果沒有 UI（例如從 Web App 呼叫），忽略
+  }
+}
