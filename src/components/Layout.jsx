@@ -115,6 +115,7 @@ export default function Layout({ children, activeTab, onTabChange }) {
             </main>
 
             {/* Footer / Banner message */}
+            {/*
             <footer className="footer footer-center p-6 bg-base-300 text-base-content/60 mt-10">
                 <div className="flex items-center gap-2 text-sm">
                     <span>用</span>
@@ -130,6 +131,7 @@ export default function Layout({ children, activeTab, onTabChange }) {
                     </a>
                 </div>
             </footer>
+            */}
 
             {/* Toast container */}
             <div id="toast-container" className="toast toast-bottom toast-center z-50" />
