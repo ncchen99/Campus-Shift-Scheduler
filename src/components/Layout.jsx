@@ -110,9 +110,26 @@ export default function Layout({ children, activeTab, onTabChange }) {
             </div>
 
             {/* Main content */}
-            <main className="container mx-auto p-4 max-w-7xl">
+            <main className="container mx-auto p-4 max-w-7xl flex-1">
                 {children}
             </main>
+
+            {/* Footer / Banner message */}
+            <footer className="footer footer-center p-6 bg-base-300 text-base-content/60 mt-10">
+                <div className="flex items-center gap-2 text-sm">
+                    <span>用</span>
+                    <span className="text-error animate-heartbeat">❤️</span>
+                    <span>製作 | </span>
+                    <a
+                        href="https://github.com/ncchen99/Campus-Shift-Scheduler"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="link link-hover font-medium underline-offset-4 decoration-primary/30 text-primary"
+                    >
+                        網頁原始碼
+                    </a>
+                </div>
+            </footer>
 
             {/* Toast container */}
             <div id="toast-container" className="toast toast-bottom toast-center z-50" />
