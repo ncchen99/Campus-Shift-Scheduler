@@ -1,0 +1,628 @@
+<script>
+    // ====== 全域變數 ======
+    let currentUser = null;
+    let currentMonth = getDefaultMonth();
+    let monthModel = null;
+    let unavailabilityData = { unavailabilities: [], specialRequest: '' };
+    let rosterData = [];
+    let autoFillEnabled = true;
+    let pendingAssignment = null;
+
+    // ====== 工具函數 ======
+    function getDefaultMonth() {
+        const now = new Date();
+        return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    }
+
+    function formatMonthDisplay(month) {
+        const [year, mon] = month.split('-');
+        return `${year} 年 ${parseInt(mon)} 月`;
+    }
+
+    function showToast(message, type = 'info') {
+        const toast = document.getElementById('toast');
+        toast.textContent = message;
+        toast.className = `toast ${type}`;
+        toast.classList.remove('hidden');
+
+        setTimeout(() => {
+            toast.classList.add('hidden');
+        }, 3000);
+    }
+
+    function showLoading() {
+        document.getElementById('loading').classList.remove('hidden');
+    }
+
+    function hideLoading() {
+        document.getElementById('loading').classList.add('hidden');
+    }
+
+    // ====== 初始化 ======
+    document.addEventListener('DOMContentLoaded', init);
+
+    async function init() {
+        try {
+            // 取得使用者資訊
+            currentUser = await runAsync('getMe');
+
+            if (!currentUser.email) {
+                showToast('請使用 Google 帳號登入', 'error');
+                hideLoading();
+                return;
+            }
+
+            // 更新 UI
+            updateUserInfo();
+            setupEventListeners();
+
+            // 載入當月資料
+            await loadMonthData();
+
+            hideLoading();
+            document.getElementById('main-container').classList.remove('hidden');
+
+        } catch (error) {
+            console.error('初始化失敗:', error);
+            showToast('載入失敗，請重新整理頁面', 'error');
+            hideLoading();
+        }
+    }
+
+    function updateUserInfo() {
+        document.getElementById('user-info').textContent = currentUser.name;
+
+        const roleBadge = document.getElementById('user-role');
+        if (currentUser.isAdmin) {
+            roleBadge.textContent = '管理員';
+            roleBadge.className = 'role-badge admin';
+        } else if (currentUser.isLeader) {
+            roleBadge.textContent = '班長';
+            roleBadge.className = 'role-badge leader';
+        } else {
+            roleBadge.textContent = '使用者';
+            roleBadge.className = 'role-badge user';
+        }
+
+        // 顯示班長/管理員功能
+        if (currentUser.isLeader) {
+            document.querySelectorAll('.leader-only').forEach(el => el.classList.remove('hidden'));
+        }
+        if (currentUser.isAdmin) {
+            document.querySelectorAll('.admin-only').forEach(el => el.classList.remove('hidden'));
+        }
+    }
+
+    function setupEventListeners() {
+        // 標籤頁切換
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+        });
+
+        // 側邊欄標籤
+        document.querySelectorAll('.sidebar-tab').forEach(btn => {
+            btn.addEventListener('click', () => switchSidebar(btn.dataset.sidebar));
+        });
+
+        // 月份導航
+        document.getElementById('prev-month').addEventListener('click', () => changeMonth(-1));
+        document.getElementById('next-month').addEventListener('click', () => changeMonth(1));
+
+        // 儲存按鈕
+        document.getElementById('save-availability').addEventListener('click', saveAvailability);
+        document.getElementById('clear-all').addEventListener('click', clearAllSelections);
+
+        // 匯出按鈕
+        document.getElementById('export-sheet').addEventListener('click', exportSheet);
+        document.getElementById('export-excel').addEventListener('click', exportExcel);
+
+        // 自動補齊開關
+        document.getElementById('auto-fill-toggle').addEventListener('change', (e) => {
+            autoFillEnabled = e.target.checked;
+        });
+
+        // 自動補齊彈窗
+        document.getElementById('autofill-yes').addEventListener('click', () => confirmAutoFill(true));
+        document.getElementById('autofill-no').addEventListener('click', () => confirmAutoFill(false));
+
+        // 新增管理員
+        document.getElementById('add-admin-btn').addEventListener('click', addAdmin);
+    }
+
+    function switchTab(tabId) {
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.tab === tabId);
+        });
+
+        document.querySelectorAll('.tab-content').forEach(content => {
+            content.classList.toggle('active', content.id === `${tabId}-tab`);
+            content.classList.toggle('hidden', content.id !== `${tabId}-tab`);
+        });
+
+        // 載入對應資料
+        if (tabId === 'roster' && currentUser.isLeader) {
+            loadRosterData();
+        } else if (tabId === 'admin' && currentUser.isAdmin) {
+            loadAdminData();
+        }
+    }
+
+    function switchSidebar(sidebarId) {
+        document.querySelectorAll('.sidebar-tab').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.sidebar === sidebarId);
+        });
+
+        document.querySelectorAll('.sidebar-content').forEach(content => {
+            const isActive = content.id === `sidebar-${sidebarId}`;
+            content.classList.toggle('active', isActive);
+            content.classList.toggle('hidden', !isActive);
+        });
+    }
+
+    // ====== 月份導航 ======
+    function changeMonth(delta) {
+        const [year, month] = currentMonth.split('-').map(Number);
+        const date = new Date(year, month - 1 + delta, 1);
+        currentMonth = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+        loadMonthData();
+    }
+
+    async function loadMonthData() {
+        document.getElementById('current-month').textContent = formatMonthDisplay(currentMonth);
+
+        try {
+            // 載入月份模型
+            monthModel = await runAsync('getMonthModel', currentMonth);
+
+            // 載入我的沒空資料
+            unavailabilityData = await runAsync('getMyUnavailability', currentMonth);
+
+            // 渲染日曆
+            renderAvailabilityCalendar();
+
+            // 填入特殊需求
+            document.getElementById('special-request').value = unavailabilityData.specialRequest || '';
+
+            // 如果是班長，也載入排班資料
+            if (currentUser.isLeader) {
+                await loadRosterData();
+            }
+
+        } catch (error) {
+            console.error('載入月份資料失敗:', error);
+            showToast('載入資料失敗', 'error');
+        }
+    }
+
+    // ====== 沒空日曆 ======
+    function renderAvailabilityCalendar() {
+        const container = document.getElementById('availability-calendar');
+        container.innerHTML = '';
+
+        if (!monthModel || !monthModel.days) return;
+
+        // 按週分組
+        let currentWeek = null;
+        let weekDiv = null;
+
+        monthModel.days.forEach(day => {
+            const weekNum = getWeekNumber(day.date);
+
+            if (weekNum !== currentWeek) {
+                currentWeek = weekNum;
+                weekDiv = document.createElement('div');
+                weekDiv.className = 'calendar-week';
+                container.appendChild(weekDiv);
+            }
+
+            const dayDiv = document.createElement('div');
+            dayDiv.className = `calendar-day ${day.isWeekend ? 'weekend' : ''}`;
+
+            const dateNum = parseInt(day.date.split('-')[2]);
+
+            dayDiv.innerHTML = `
+      <div class="calendar-day-header">
+        <span class="day-date">${dateNum}日</span>
+        <span class="day-name ${day.isWeekend ? 'weekend' : ''}">週${day.dayName}</span>
+      </div>
+      <div class="shifts-container">
+        ${day.shifts.map(shift => {
+                const isUnavailable = unavailabilityData.unavailabilities.some(
+                    u => u.date === day.date && u.ruleId === shift.ruleId
+                );
+                return `
+            <div class="shift-slot">
+              <span class="shift-label">${shift.label}</span>
+              <input type="checkbox" class="shift-checkbox" 
+                     data-date="${day.date}" 
+                     data-rule="${shift.ruleId}"
+                     ${isUnavailable ? 'checked' : ''}>
+            </div>
+          `;
+            }).join('')}
+      </div>
+    `;
+
+            weekDiv.appendChild(dayDiv);
+        });
+    }
+
+    function getWeekNumber(dateStr) {
+        const date = new Date(dateStr);
+        const firstDay = new Date(date.getFullYear(), date.getMonth(), 1);
+        return Math.ceil((date.getDate() + firstDay.getDay()) / 7);
+    }
+
+    // ====== 儲存沒空 ======
+    async function saveAvailability() {
+        try {
+            showLoading();
+
+            // 收集勾選的資料
+            const checkboxes = document.querySelectorAll('.shift-checkbox:checked');
+            const selections = Array.from(checkboxes).map(cb => ({
+                date: cb.dataset.date,
+                ruleId: cb.dataset.rule
+            }));
+
+            const specialText = document.getElementById('special-request').value.trim();
+
+            const result = await runAsync('saveMyUnavailability', currentMonth, selections, specialText);
+
+            hideLoading();
+
+            if (result.success) {
+                showToast(`已儲存 ${result.count} 筆沒空紀錄`, 'success');
+
+                const statusDiv = document.getElementById('save-status');
+                statusDiv.textContent = `✓ 儲存成功 (${new Date(result.savedAt).toLocaleString()})`;
+                statusDiv.className = 'save-status success';
+                statusDiv.classList.remove('hidden');
+            }
+
+        } catch (error) {
+            hideLoading();
+            showToast('儲存失敗：' + error.message, 'error');
+        }
+    }
+
+    function clearAllSelections() {
+        document.querySelectorAll('.shift-checkbox').forEach(cb => cb.checked = false);
+        showToast('已清空所有勾選');
+    }
+
+    // ====== 排班功能 ======
+    async function loadRosterData() {
+        if (!currentUser.isLeader) return;
+
+        try {
+            rosterData = await runAsync('getRoster', currentMonth);
+            renderRosterCalendar();
+
+            // 載入側欄資料
+            await loadSidebarData();
+
+        } catch (error) {
+            console.error('載入排班資料失敗:', error);
+        }
+    }
+
+    function renderRosterCalendar() {
+        const container = document.getElementById('roster-calendar');
+        container.innerHTML = '';
+
+        if (!monthModel || !monthModel.days) return;
+
+        let currentWeek = null;
+        let weekDiv = null;
+
+        monthModel.days.forEach(day => {
+            const weekNum = getWeekNumber(day.date);
+
+            if (weekNum !== currentWeek) {
+                currentWeek = weekNum;
+                weekDiv = document.createElement('div');
+                weekDiv.className = 'calendar-week';
+                container.appendChild(weekDiv);
+            }
+
+            const dayDiv = document.createElement('div');
+            dayDiv.className = `calendar-day ${day.isWeekend ? 'weekend' : ''}`;
+
+            const dateNum = parseInt(day.date.split('-')[2]);
+
+            dayDiv.innerHTML = `
+      <div class="calendar-day-header">
+        <span class="day-date">${dateNum}日</span>
+        <span class="day-name ${day.isWeekend ? 'weekend' : ''}">週${day.dayName}</span>
+      </div>
+      <div class="shifts-container">
+        ${day.shifts.map(shift => {
+                const assignment = rosterData.find(
+                    r => r.date === day.date && r.ruleId === shift.ruleId
+                );
+                const bgColor = assignment?.color || 'transparent';
+
+                return `
+            <div class="shift-slot ${assignment ? 'assigned' : ''}" 
+                 style="${assignment ? `border-color: ${bgColor}` : ''}"
+                 onclick="openCandidateModal('${day.date}', '${shift.ruleId}', '${shift.label}')">
+              <span class="shift-label">${shift.label}</span>
+              ${assignment ? `<span class="assigned-name">${assignment.userName}</span>` : ''}
+            </div>
+          `;
+            }).join('')}
+      </div>
+    `;
+
+            weekDiv.appendChild(dayDiv);
+        });
+    }
+
+    async function openCandidateModal(date, ruleId, label) {
+        try {
+            const candidates = await runAsync('getCandidates', date, ruleId);
+            pendingAssignment = { date, ruleId, label };
+
+            document.getElementById('modal-title').textContent = `${date} ${label} - 選擇人員`;
+
+            const listDiv = document.getElementById('candidate-list');
+            listDiv.innerHTML = candidates.map(c => `
+      <div class="candidate-item" onclick="selectCandidate('${c.userId}', '${c.name}')">
+        ${c.name}
+        <small style="color: #999;">(${c.userId})</small>
+      </div>
+    `).join('');
+
+            if (candidates.length === 0) {
+                listDiv.innerHTML = '<p style="padding: 20px; text-align: center; color: #999;">沒有可用人員</p>';
+            }
+
+            document.getElementById('candidate-modal').classList.remove('hidden');
+
+        } catch (error) {
+            showToast('載入候選人失敗', 'error');
+        }
+    }
+
+    function closeModal() {
+        document.getElementById('candidate-modal').classList.add('hidden');
+        pendingAssignment = null;
+    }
+
+    async function selectCandidate(userId, name) {
+        closeModal();
+
+        if (!pendingAssignment) return;
+
+        // 檢查是否啟用自動補齊
+        if (autoFillEnabled) {
+            document.getElementById('autofill-message').textContent =
+                `是否要將「${name}」套用到 ${pendingAssignment.date} 的其他班段？`;
+            pendingAssignment.userId = userId;
+            pendingAssignment.userName = name;
+            document.getElementById('autofill-modal').classList.remove('hidden');
+        } else {
+            await assignToCell(userId, false);
+        }
+    }
+
+    async function confirmAutoFill(doAutoFill) {
+        document.getElementById('autofill-modal').classList.add('hidden');
+        await assignToCell(pendingAssignment.userId, doAutoFill);
+    }
+
+    async function assignToCell(userId, autoFill) {
+        try {
+            showLoading();
+
+            const result = await runAsync('setRosterCell',
+                currentMonth,
+                pendingAssignment.date,
+                pendingAssignment.ruleId,
+                userId,
+                { autoFillSameDay: autoFill }
+            );
+
+            hideLoading();
+
+            if (result.success) {
+                showToast(`已指派 ${result.affectedCells.length} 個班段`, 'success');
+                await loadRosterData();
+            }
+
+        } catch (error) {
+            hideLoading();
+            showToast('指派失敗：' + error.message, 'error');
+        }
+
+        pendingAssignment = null;
+    }
+
+    async function clearAssignment() {
+        if (!pendingAssignment) {
+            closeModal();
+            return;
+        }
+
+        try {
+            showLoading();
+
+            await runAsync('setRosterCell',
+                currentMonth,
+                pendingAssignment.date,
+                pendingAssignment.ruleId,
+                '', // 空字串表示清除
+                {}
+            );
+
+            hideLoading();
+            closeModal();
+            showToast('已清除指派', 'success');
+            await loadRosterData();
+
+        } catch (error) {
+            hideLoading();
+            showToast('清除失敗', 'error');
+        }
+    }
+
+    // ====== 側欄資料 ======
+    async function loadSidebarData() {
+        try {
+            // 載入特殊需求
+            const requests = await runAsync('getAllSpecialRequests', currentMonth);
+            renderRequestsList(requests);
+
+            // 載入工時統計
+            const workload = await runAsync('getMonthlyWorkload', currentMonth);
+            renderWorkloadList(workload);
+
+        } catch (error) {
+            console.error('載入側欄資料失敗:', error);
+        }
+    }
+
+    function renderRequestsList(requests) {
+        const container = document.getElementById('requests-list');
+
+        if (requests.length === 0) {
+            container.innerHTML = '<p style="color: #999; text-align: center;">本月無特殊需求</p>';
+            return;
+        }
+
+        container.innerHTML = requests.map(r => `
+    <div class="request-item">
+      <div class="request-name">${r.name}</div>
+      <div class="request-text">${r.text || '（無內容）'}</div>
+    </div>
+  `).join('');
+    }
+
+    function renderWorkloadList(workload) {
+        const container = document.getElementById('workload-list');
+
+        if (workload.length === 0) {
+            container.innerHTML = '<p style="color: #999; text-align: center;">尚無排班資料</p>';
+            return;
+        }
+
+        container.innerHTML = workload.map(w => `
+    <div class="workload-item">
+      <span class="workload-name">${w.name}</span>
+      <div class="workload-stats">
+        <span class="workload-hours">${w.hours}h</span>
+        <span>${w.shiftsCount} 班</span>
+      </div>
+    </div>
+  `).join('');
+    }
+
+    // ====== 匯出功能 ======
+    async function exportSheet() {
+        try {
+            showLoading();
+            const result = await runAsync('exportToSheet', currentMonth);
+            hideLoading();
+
+            if (result.success) {
+                showToast('班表已建立！', 'success');
+                window.open(result.sheetUrl, '_blank');
+            }
+        } catch (error) {
+            hideLoading();
+            showToast('匯出失敗：' + error.message, 'error');
+        }
+    }
+
+    async function exportExcel() {
+        try {
+            showLoading();
+            const result = await runAsync('exportToExcel', currentMonth);
+            hideLoading();
+
+            if (result.success) {
+                showToast('Excel 已產生！', 'success');
+                window.open(result.excelUrl, '_blank');
+            }
+        } catch (error) {
+            hideLoading();
+            showToast('匯出失敗：' + error.message, 'error');
+        }
+    }
+
+    // ====== 管理員功能 ======
+    async function loadAdminData() {
+        try {
+            const admins = await runAsync('getAdmins');
+
+            const container = document.getElementById('admin-list');
+            container.innerHTML = admins.map(a => `
+      <div class="admin-item">
+        <div class="admin-info">
+          <span class="admin-name">${a.name}</span>
+          <span class="admin-email">${a.email}</span>
+        </div>
+        <button class="btn btn-secondary" onclick="removeAdmin('${a.email}')">
+          移除
+        </button>
+      </div>
+    `).join('');
+
+        } catch (error) {
+            console.error('載入管理員資料失敗:', error);
+        }
+    }
+
+    async function addAdmin() {
+        const email = document.getElementById('new-admin-email').value.trim();
+        const name = document.getElementById('new-admin-name').value.trim();
+
+        if (!email) {
+            showToast('請輸入 Email', 'error');
+            return;
+        }
+
+        try {
+            showLoading();
+            await runAsync('addAdmin', email, name || email.split('@')[0]);
+            hideLoading();
+
+            showToast('已新增管理員', 'success');
+            document.getElementById('new-admin-email').value = '';
+            document.getElementById('new-admin-name').value = '';
+            await loadAdminData();
+
+        } catch (error) {
+            hideLoading();
+            showToast('新增失敗：' + error.message, 'error');
+        }
+    }
+
+    async function removeAdmin(email) {
+        if (!confirm(`確定要移除管理員 ${email}？`)) return;
+
+        try {
+            showLoading();
+            await runAsync('removeAdmin', email);
+            hideLoading();
+
+            showToast('已移除管理員', 'success');
+            await loadAdminData();
+
+        } catch (error) {
+            hideLoading();
+            showToast('移除失敗：' + error.message, 'error');
+        }
+    }
+
+    // ====== GAS 呼叫封裝 ======
+    function runAsync(functionName, ...args) {
+        return new Promise((resolve, reject) => {
+            google.script.run
+                .withSuccessHandler(resolve)
+                .withFailureHandler(reject)
+            [functionName](...args);
+        });
+    }
+</script>

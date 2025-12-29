@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+  <?!= include('ui.css'); ?>
+</head>
+<body>
+  <div id="app">
+    <!-- 載入中 -->
+    <div id="loading" class="loading-overlay">
+      <div class="loading-spinner"></div>
+      <p>載入中...</p>
+    </div>
+    
+    <!-- 主容器 -->
+    <div id="main-container" class="hidden">
+      <!-- 頂部導航欄 -->
+      <header class="header">
+        <div class="header-left">
+          <h1>🏢 活動中心排班系統</h1>
+        </div>
+        <div class="header-right">
+          <span id="user-info" class="user-info"></span>
+          <span id="user-role" class="role-badge"></span>
+        </div>
+      </header>
+      
+      <!-- 標籤頁導航 -->
+      <nav class="tabs" id="tabs-nav">
+        <button class="tab-btn active" data-tab="availability">
+          <span class="material-icons">event_busy</span>
+          填寫沒空時間
+        </button>
+        <button class="tab-btn leader-only hidden" data-tab="roster">
+          <span class="material-icons">calendar_month</span>
+          排班管理
+        </button>
+        <button class="tab-btn admin-only hidden" data-tab="admin">
+          <span class="material-icons">admin_panel_settings</span>
+          系統管理
+        </button>
+      </nav>
+      
+      <!-- 內容區域 -->
+      <main class="content">
+        <!-- 月份選擇器 -->
+        <div class="month-selector">
+          <button id="prev-month" class="btn btn-icon">
+            <span class="material-icons">chevron_left</span>
+          </button>
+          <span id="current-month" class="month-display"></span>
+          <button id="next-month" class="btn btn-icon">
+            <span class="material-icons">chevron_right</span>
+          </button>
+        </div>
+        
+        <!-- 一般使用者：填寫沒空 -->
+        <section id="availability-tab" class="tab-content active">
+          <div class="section-header">
+            <h2>填寫沒空時間</h2>
+            <p class="hint">請勾選您<strong>無法上班</strong>的時段</p>
+          </div>
+          
+          <div id="availability-calendar" class="calendar-grid"></div>
+          
+          <div class="special-request-section">
+            <h3>特殊需求說明</h3>
+            <textarea id="special-request" placeholder="例如：希望連續時段、偏好週末、每週最多幾班..." rows="3"></textarea>
+          </div>
+          
+          <div class="action-bar">
+            <button id="clear-all" class="btn btn-secondary">
+              <span class="material-icons">clear_all</span>
+              清空全部
+            </button>
+            <button id="save-availability" class="btn btn-primary">
+              <span class="material-icons">save</span>
+              儲存
+            </button>
+          </div>
+          
+          <div id="save-status" class="save-status hidden"></div>
+        </section>
+        
+        <!-- 班長：排班管理 -->
+        <section id="roster-tab" class="tab-content hidden">
+          <div class="roster-container">
+            <div class="roster-main">
+              <div class="section-header">
+                <h2>排班管理</h2>
+                <div class="roster-actions">
+                  <label class="checkbox-label">
+                    <input type="checkbox" id="auto-fill-toggle" checked>
+                    <span>同日自動補齊</span>
+                  </label>
+                  <button id="export-sheet" class="btn btn-secondary">
+                    <span class="material-icons">table_chart</span>
+                    匯出 Sheet
+                  </button>
+                  <button id="export-excel" class="btn btn-secondary">
+                    <span class="material-icons">download</span>
+                    匯出 Excel
+                  </button>
+                </div>
+              </div>
+              
+              <div id="roster-calendar" class="calendar-grid roster-mode"></div>
+            </div>
+            
+            <!-- 側邊欄 -->
+            <aside class="sidebar">
+              <div class="sidebar-tabs">
+                <button class="sidebar-tab active" data-sidebar="requests">特殊需求</button>
+                <button class="sidebar-tab" data-sidebar="workload">工時統計</button>
+              </div>
+              
+              <div id="sidebar-requests" class="sidebar-content active">
+                <div id="requests-list" class="requests-list"></div>
+              </div>
+              
+              <div id="sidebar-workload" class="sidebar-content hidden">
+                <div id="workload-list" class="workload-list"></div>
+              </div>
+            </aside>
+          </div>
+        </section>
+        
+        <!-- 管理員：系統管理 -->
+        <section id="admin-tab" class="tab-content hidden">
+          <div class="section-header">
+            <h2>管理員設定</h2>
+          </div>
+          
+          <div class="admin-section">
+            <h3>管理員列表</h3>
+            <div id="admin-list" class="admin-list"></div>
+            
+            <div class="add-admin-form">
+              <h4>新增管理員</h4>
+              <div class="form-row">
+                <input type="email" id="new-admin-email" placeholder="Email" class="input">
+                <input type="text" id="new-admin-name" placeholder="姓名" class="input">
+                <button id="add-admin-btn" class="btn btn-primary">新增</button>
+              </div>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+    
+    <!-- 人員選擇彈窗 -->
+    <div id="candidate-modal" class="modal hidden">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3 id="modal-title">選擇人員</h3>
+          <button class="modal-close" onclick="closeModal()">
+            <span class="material-icons">close</span>
+          </button>
+        </div>
+        <div id="candidate-list" class="candidate-list"></div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" onclick="clearAssignment()">清除指派</button>
+        </div>
+      </div>
+    </div>
+    
+    <!-- 同日補齊確認 -->
+    <div id="autofill-modal" class="modal hidden">
+      <div class="modal-content modal-small">
+        <div class="modal-header">
+          <h3>套用到同一天？</h3>
+        </div>
+        <p id="autofill-message">是否要將此人員套用到同一天的其他班段？</p>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" id="autofill-no">只填這一格</button>
+          <button class="btn btn-primary" id="autofill-yes">套用同日</button>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Toast 通知 -->
+    <div id="toast" class="toast hidden"></div>
+  </div>
+  
+  <?!= include('ui.js'); ?>
+</body>
+</html>
