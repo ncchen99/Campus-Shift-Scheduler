@@ -2,6 +2,10 @@
 
 校園活動中心工讀生排班管理系統。
 
+| 登記 | 排班 | 
+| --- | --- | 
+| ![Demo](docs/images/demo1.png) | ![Demo](docs/images/demo2.png) |
+
 ## ✨ 功能特色
 
 - **Google 登入**：使用 Google 帳號快速登入
