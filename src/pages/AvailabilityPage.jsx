@@ -169,14 +169,28 @@ export default function AvailabilityPage() {
                 <label
                     key={shift.ruleId}
                     className={`
-            flex items-center gap-2 p-2 rounded-btn cursor-pointer
+            flex items-center gap-1.5 p-1.5 rounded-btn cursor-pointer min-w-0
             ${checked ? 'bg-error/20' : 'bg-base-200 hover:bg-base-300'}
             transition-colors
           `}
                 >
+                    {/* 自訂 X 號勾選框 */}
+                    <div className={`
+                        w-4 h-4 rounded-full flex items-center justify-center transition-all flex-shrink-0 border-2
+                        ${checked
+                            ? 'bg-error border-error text-white scale-110 shadow-sm'
+                            : 'bg-base-100 border-base-300'}
+                    `}>
+                        {checked && (
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={5} stroke="currentColor" className="w-2.5 h-2.5">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                        )}
+                    </div>
+
                     <input
                         type="checkbox"
-                        className="checkbox checkbox-error checkbox-sm"
+                        className="hidden" // 隱藏原生 checkbox
                         checked={checked}
                         onChange={(e) => {
                             if (index === 0) {
@@ -186,7 +200,9 @@ export default function AvailabilityPage() {
                             }
                         }}
                     />
-                    <span className="text-sm flex-1">{shift.label}</span>
+                    <span className="text-[10px] sm:text-xs flex-1 truncate font-medium" title={shift.label}>
+                        {shift.label}
+                    </span>
                 </label>
             );
         });
