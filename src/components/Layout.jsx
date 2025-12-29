@@ -59,7 +59,7 @@ export default function Layout({ children, activeTab, onTabChange }) {
 
                 {/* Tabs in Header - Desktop */}
                 <div className="navbar-center hidden md:flex">
-                    <div className="flex gap-1 bg-neutral-focus/50 rounded-lg p-1">
+                    <div className="flex gap-1 bg-neutral-focus/50 rounded-box p-1">
                         {visibleTabs.map(tab => (
                             <button
                                 key={tab.id}
@@ -92,7 +92,7 @@ export default function Layout({ children, activeTab, onTabChange }) {
 
             {/* Mobile tabs */}
             <div className="md:hidden bg-neutral p-2">
-                <div className="flex gap-1 justify-center bg-neutral-focus/50 rounded-lg p-1">
+                <div className="flex gap-1 justify-center bg-neutral-focus/50 rounded-box p-1">
                     {visibleTabs.map(tab => (
                         <button
                             key={tab.id}

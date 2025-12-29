@@ -1,8 +1,109 @@
 @import "tailwindcss";
 
 @plugin "daisyui" {
-  themes: light --default, dark --prefersdark, cupcake;
+  themes: earth --default;
 }
+
+/* 自訂大地色主題 - 使用 DaisyUI 5 結構 */
+@plugin "daisyui/theme" {
+  name: "earth";
+  default: true;
+  prefersdark: false;
+  color-scheme: light;
+
+  /* 基礎色彩 - 溫暖的大地色系 */
+  --color-base-100: oklch(98% 0.01 75);
+  /* 米白背景 */
+  --color-base-200: oklch(94% 0.015 75);
+  /* 淺米色 */
+  --color-base-300: oklch(89% 0.02 75);
+  /* 中米色 */
+  --color-base-content: oklch(30% 0.03 75);
+  /* 深棕色文字 */
+
+  /* 主色調 - 暖棕色 */
+  --color-primary: oklch(55% 0.08 55);
+  /* 溫暖棕色 */
+  --color-primary-content: oklch(98% 0.01 75);
+
+  /* 次要色 - 橄欖綠 */
+  --color-secondary: oklch(55% 0.06 140);
+  /* 橄欖綠 */
+  --color-secondary-content: oklch(98% 0.01 75);
+
+  /* 強調色 - 陶土色 */
+  --color-accent: oklch(60% 0.1 45);
+  /* 陶土色 */
+  --color-accent-content: oklch(98% 0.01 75);
+
+  /* 中性色 - 深棕色 */
+  --color-neutral: oklch(35% 0.035 55);
+  /* 深棕色 */
+  --color-neutral-content: oklch(95% 0.01 75);
+
+  /* 功能色 */
+  --color-info: oklch(60% 0.08 230);
+  /* 柔和藍 */
+  --color-info-content: oklch(98% 0.01 75);
+  --color-success: oklch(60% 0.1 145);
+  /* 柔和綠 */
+  --color-success-content: oklch(98% 0.01 75);
+  --color-warning: oklch(70% 0.12 75);
+  /* 琥珀色 */
+  --color-warning-content: oklch(25% 0.03 75);
+  --color-error: oklch(55% 0.12 25);
+  /* 柔和紅棕 */
+  --color-error-content: oklch(98% 0.01 75);
+
+  /* 圓角設定 - 使用 DaisyUI 5 變數 */
+  --radius-selector: 1rem;
+  /* 用於按鈕、切換、選擇器等 */
+  --radius-field: 0.5rem;
+  /* 用於輸入框、文字區域 */
+  --radius-box: 0.75rem;
+  /* 用於卡片、彈窗、區塊 */
+
+  /* 基準尺寸 */
+  --size-selector: 0.25rem;
+  --size-field: 0.25rem;
+
+  /* 邊框設定 */
+  --border: 1px;
+
+  /* 視覺效果 */
+  --depth: 1;
+  --noise: 0;
+
+  /* 按鈕動畫 */
+  --animation-btn: 0.2s;
+  --animation-input: 0.2s;
+}
+
+/* 移除手動圓角覆蓋，現在由主題變數控制 */
+/* .textarea, .input, .btn { border-radius: ... } 這些已不需要 */
+
+/* 強制自訂組件套用主題圓角變數 */
+.rounded-btn {
+  border-radius: var(--radius-selector, 1rem) !important;
+}
+
+.rounded-box {
+  border-radius: var(--radius-box, 0.75rem) !important;
+}
+
+/* 修復按鈕邊框顏色一致性 - 確保實體按鈕邊框與背景色相同 */
+.btn:not(.btn-outline):not(.btn-ghost):not(.btn-link) {
+  border-color: transparent !important;
+}
+
+/* Dropdown Hover 圓角修正 */
+.menu li>*:not(ul):not(.menu-title):not(details):active,
+.menu li>*:not(ul):not(.menu-title):not(details).active,
+.menu li>details>summary:active,
+.menu li>*:not(ul):not(.menu-title):not(details):hover {
+  border-radius: var(--radius-selector, 1rem) !important;
+}
+
 
 /* Custom utility classes */
 .calendar-grid {
@@ -32,4 +133,39 @@
 
 .animate-fade-in {
   animation: fadeIn 0.3s ease-out;
+}
+
+/* Toast slide-in animation */
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.animate-slide-in-right {
+  animation: slideInRight 0.3s ease-out;
+}
+
+/* 增強按鈕樣式 - 淡色填充取代純框線 */
+.btn-outline {
+  background-color: oklch(96% 0.015 75) !important;
+}
+
+.btn-outline:hover {
+  background-color: oklch(92% 0.02 75) !important;
+}
+
+/* 手機版日曆樣式 */
+.mobile-calendar-item {
+  transition: all 0.2s ease;
+}
+
+.mobile-calendar-item.expanded {
+  background-color: oklch(95% 0.02 75);
 }

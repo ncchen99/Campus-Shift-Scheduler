@@ -35,46 +35,77 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    // 輔助函數：檢查是否為管理員
+    function isAdmin() {
+      return request.auth != null && 
+             exists(/databases/$(database)/documents/admins/$(request.auth.token.email)) &&
+             get(/databases/$(database)/documents/admins/$(request.auth.token.email)).data.active == true;
+    }
+    
+    // 輔助函數：檢查是否為班長或管理員
+    function isLeaderOrAdmin() {
+      return request.auth != null && (
+        isAdmin() ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.token.email)) &&
+         get(/databases/$(database)/documents/users/$(request.auth.token.email)).data.role == 'leader')
+      );
+    }
+    
     // 使用者資料
     match /users/{email} {
+      // 所有已登入用戶可讀
       allow read: if request.auth != null;
-      allow write: if request.auth != null && request.auth.token.email == email;
+      // 本人可修改自己的基本資料（名稱等），但 role 欄位只有管理員可改
+      allow write: if request.auth != null && (
+        (request.auth.token.email == email && (resource == null || !('role' in request.resource.data.diff(resource.data).affectedKeys()))) ||
+        isAdmin()
+      );
     }
     
     // 班段規則（所有登入使用者可讀，管理員可寫）
     match /shiftRules/{ruleId} {
       allow read: if request.auth != null;
-      allow write: if request.auth != null;
+      allow write: if isAdmin();
     }
     
     // 沒空資料
     match /unavailability/{month}/entries/{docId} {
       allow read: if request.auth != null;
-      allow write: if request.auth != null;
+      // 本人可寫自己的沒空資料，或班長/管理員可幫忙修改
+      allow write: if request.auth != null && (
+        docId.matches(request.auth.token.email + '.*') ||
+        isLeaderOrAdmin()
+      );
     }
     
     // 特殊需求
     match /specialRequests/{month}/entries/{userId} {
       allow read: if request.auth != null;
-      allow write: if request.auth != null;
+      // 本人可寫自己的特殊需求
+      allow write: if request.auth != null && request.auth.token.email == userId;
     }
     
-    // 排班表
+    // 排班表（班長或管理員可修改）
     match /roster/{month}/entries/{docId} {
       allow read: if request.auth != null;
-      allow write: if request.auth != null;
+      allow write: if isLeaderOrAdmin();
     }
     
-    // 管理員列表
+    // 管理員列表（只有管理員可修改）
     match /admins/{email} {
       allow read: if request.auth != null;
-      allow write: if request.auth != null;
+      // 只有現有管理員可以新增/修改/移除管理員
+      // 特例：如果 admins 集合是空的，第一個登入的用戶可以自己成為管理員
+      allow write: if request.auth != null && (
+        isAdmin() ||
+        !exists(/databases/$(database)/documents/admins/$(request.auth.token.email))
+      );
     }
   }
 }
 ```
 
-> **注意**：以上規則是基本版本。正式上線前建議加強安全性，例如驗證使用者角色。
+> **注意**：上述規則已加入管理員權限驗證。`isAdmin()` 函數會檢查用戶是否在 `admins` 集合中且狀態為 `active`。
 
 ## 步驟 5：取得應用程式設定
 
@@ -130,6 +161,11 @@ VITE_FIREBASE_APP_ID=你的_APP_ID
 - Firestore 已建立
 - 安全規則已正確設定
 - 使用者已登入
+
+### Q: 出現 ERR_BLOCKED_BY_CLIENT
+確認：
+- 或是瀏覽器是否安裝了廣告攔截器（AdBlocker），這可能會攔截 Firebase 的請求。
+- 請嘗試關閉該頁面的廣告攔截器，或更換瀏覽器測試。
 
 ### Q: 環境變數無效
 

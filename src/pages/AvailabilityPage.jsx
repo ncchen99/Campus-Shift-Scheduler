@@ -1,7 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../contexts/ToastContext';
 import Calendar from '../components/Calendar';
+import MobileCalendar from '../components/MobileCalendar';
 import MonthSelector from '../components/MonthSelector';
+import { useMobileView } from '../hooks/useMobileView';
 import {
     getShiftRules,
     getMonthModel,
@@ -13,6 +16,8 @@ import {
 
 export default function AvailabilityPage() {
     const { user } = useAuth();
+    const { showToast } = useToast();
+    const isMobile = useMobileView();
     const [currentMonth, setCurrentMonth] = useState(getDefaultMonth());
     const [monthModel, setMonthModel] = useState(null);
     const [shiftRules, setShiftRules] = useState([]);
@@ -20,7 +25,6 @@ export default function AvailabilityPage() {
     const [specialRequest, setSpecialRequest] = useState('');
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
-    const [saveStatus, setSaveStatus] = useState(null);
 
     // 預設為下個月
     function getDefaultMonth() {
@@ -50,6 +54,7 @@ export default function AvailabilityPage() {
             setSpecialRequest(request);
         } catch (error) {
             console.error('Error loading data:', error);
+            showToast('載入資料失敗', 'error');
         }
         setLoading(false);
     };
@@ -62,7 +67,6 @@ export default function AvailabilityPage() {
                 u => !(u.date === date && u.ruleId === ruleId)
             ));
         }
-        setSaveStatus(null);
     };
 
     // 點擊第一個時段時自動勾選全天
@@ -84,24 +88,22 @@ export default function AvailabilityPage() {
         } else {
             handleCheckboxChange(day.date, shift.ruleId, isChecked);
         }
-        setSaveStatus(null);
     };
 
     const handleClearAll = () => {
         setUnavailability([]);
-        setSaveStatus(null);
+        showToast('已清空所有選擇', 'info');
     };
 
     const handleSave = async () => {
         setSaving(true);
-        setSaveStatus(null);
         try {
             await saveMyUnavailability(user.email, currentMonth, unavailability);
             await saveSpecialRequest(user.email, currentMonth, specialRequest);
-            setSaveStatus({ type: 'success', message: `已儲存 ${unavailability.length} 筆沒空紀錄` });
+            showToast(`已儲存 ${unavailability.length} 筆沒空紀錄`, 'success');
         } catch (error) {
             console.error('Error saving:', error);
-            setSaveStatus({ type: 'error', message: '儲存失敗：' + error.message });
+            showToast('儲存失敗：' + error.message, 'error');
         }
         setSaving(false);
     };
@@ -110,14 +112,14 @@ export default function AvailabilityPage() {
         return unavailability.some(u => u.date === date && u.ruleId === ruleId);
     };
 
-    const renderDayContent = (day) => {
+    const renderDayContent = (day, weekIndex, totalWeeks) => {
         return day.shifts.map((shift, index) => {
             const checked = isUnavailable(day.date, shift.ruleId);
             return (
                 <label
                     key={shift.ruleId}
                     className={`
-            flex items-center gap-2 p-1.5 rounded cursor-pointer
+            flex items-center gap-2 p-2 rounded-btn cursor-pointer
             ${checked ? 'bg-error/20' : 'bg-base-200 hover:bg-base-300'}
             transition-colors
           `}
@@ -134,7 +136,7 @@ export default function AvailabilityPage() {
                             }
                         }}
                     />
-                    <span className="text-xs flex-1">{shift.label}</span>
+                    <span className="text-sm flex-1">{shift.label}</span>
                 </label>
             );
         });
@@ -164,13 +166,20 @@ export default function AvailabilityPage() {
                 onMonthChange={setCurrentMonth}
             />
 
-            {/* 日曆 */}
+            {/* 日曆 - 響應式切換 */}
             <div className="card bg-base-100 shadow-lg">
                 <div className="card-body p-4">
-                    <Calendar
-                        monthModel={monthModel}
-                        renderDayContent={renderDayContent}
-                    />
+                    {isMobile ? (
+                        <MobileCalendar
+                            monthModel={monthModel}
+                            renderDayContent={renderDayContent}
+                        />
+                    ) : (
+                        <Calendar
+                            monthModel={monthModel}
+                            renderDayContent={renderDayContent}
+                        />
+                    )}
                 </div>
             </div>
 
@@ -183,10 +192,7 @@ export default function AvailabilityPage() {
                         placeholder="例如：希望連續時段、偏好週末、每週最多幾班..."
                         rows={3}
                         value={specialRequest}
-                        onChange={(e) => {
-                            setSpecialRequest(e.target.value);
-                            setSaveStatus(null);
-                        }}
+                        onChange={(e) => setSpecialRequest(e.target.value)}
                     />
                 </div>
             </div>
@@ -194,7 +200,7 @@ export default function AvailabilityPage() {
             {/* 操作按鈕 */}
             <div className="flex flex-wrap justify-end gap-3">
                 <button
-                    className="btn btn-ghost"
+                    className="btn btn-outline"
                     onClick={handleClearAll}
                 >
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
@@ -215,13 +221,7 @@ export default function AvailabilityPage() {
                     {saving ? '儲存中...' : '儲存'}
                 </button>
             </div>
-
-            {/* 儲存狀態 */}
-            {saveStatus && (
-                <div className={`alert ${saveStatus.type === 'success' ? 'alert-success' : 'alert-error'}`}>
-                    <span>{saveStatus.message}</span>
-                </div>
-            )}
         </div>
     );
 }
+

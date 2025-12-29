@@ -244,7 +244,7 @@ export function calculateHours(start, end) {
     return (endMin - startMin) / 60;
 }
 
-export async function getMonthlyWorkload(month, roster, shiftRules, users) {
+export function getMonthlyWorkload(month, roster, shiftRules, users) {
     const ruleHours = {};
     shiftRules.forEach(r => {
         ruleHours[r.ruleId] = calculateHours(r.start, r.end);

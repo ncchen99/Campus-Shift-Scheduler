@@ -50,7 +50,7 @@ export default function Calendar({
                             <div
                                 key={day.date}
                                 className={`
-                  min-h-[100px] rounded-lg p-2 border
+                  min-h-[100px] rounded-box p-2 border
                   ${day.isWeekend
                                         ? 'bg-warning/10 border-warning/30'
                                         : 'bg-base-100 border-base-300'
@@ -67,7 +67,7 @@ export default function Calendar({
 
                                 {/* 班段內容 - 由父組件提供 */}
                                 <div className="space-y-1">
-                                    {renderDayContent(day)}
+                                    {renderDayContent(day, weekIndex, weeks.length)}
                                 </div>
                             </div>
                         );

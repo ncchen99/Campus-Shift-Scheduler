@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../contexts/ToastContext';
 import {
     getAdmins,
     addAdmin,
@@ -10,13 +11,12 @@ import {
 
 export default function AdminPage() {
     const { user } = useAuth();
+    const { showToast } = useToast();
     const [admins, setAdmins] = useState([]);
     const [loading, setLoading] = useState(true);
     const [newEmail, setNewEmail] = useState('');
     const [newName, setNewName] = useState('');
     const [adding, setAdding] = useState(false);
-    const [error, setError] = useState('');
-    const [success, setSuccess] = useState('');
     const [hasShiftRules, setHasShiftRules] = useState(true);
 
     useEffect(() => {
@@ -34,6 +34,7 @@ export default function AdminPage() {
             setHasShiftRules(rules.length > 0);
         } catch (error) {
             console.error('Error loading admins:', error);
+            showToast('載入管理員資料失敗', 'error');
         }
         setLoading(false);
     };
@@ -41,13 +42,11 @@ export default function AdminPage() {
     const handleAddAdmin = async (e) => {
         e.preventDefault();
         if (!newEmail.trim()) {
-            setError('請輸入 Email');
+            showToast('請輸入 Email', 'warning');
             return;
         }
 
         setAdding(true);
-        setError('');
-        setSuccess('');
 
         try {
             await addAdmin(
@@ -57,11 +56,11 @@ export default function AdminPage() {
             );
             setNewEmail('');
             setNewName('');
-            setSuccess('已新增管理員');
+            showToast('已新增管理員', 'success');
             await loadData();
         } catch (error) {
             console.error('Error adding admin:', error);
-            setError('新增失敗：' + error.message);
+            showToast('新增失敗：' + error.message, 'error');
         }
         setAdding(false);
     };
@@ -70,17 +69,17 @@ export default function AdminPage() {
         if (!confirm(`確定要移除管理員 ${email}？`)) return;
 
         if (admins.length <= 1) {
-            setError('至少需要保留一位管理員');
+            showToast('至少需要保留一位管理員', 'warning');
             return;
         }
 
         try {
             await removeAdmin(email);
-            setSuccess('已移除管理員');
+            showToast('已移除管理員', 'success');
             await loadData();
         } catch (error) {
             console.error('Error removing admin:', error);
-            setError('移除失敗：' + error.message);
+            showToast('移除失敗：' + error.message, 'error');
         }
     };
 
@@ -89,11 +88,11 @@ export default function AdminPage() {
 
         try {
             await initializeShiftRules();
-            setSuccess('已初始化班段規則');
+            showToast('已初始化班段規則', 'success');
             setHasShiftRules(true);
         } catch (error) {
             console.error('Error initializing rules:', error);
-            setError('初始化失敗：' + error.message);
+            showToast('初始化失敗：' + error.message, 'error');
         }
     };
 
@@ -108,24 +107,6 @@ export default function AdminPage() {
     return (
         <div className="max-w-2xl mx-auto space-y-6">
             <h2 className="text-2xl font-bold">系統管理</h2>
-
-            {/* 狀態訊息 */}
-            {error && (
-                <div className="alert alert-error">
-                    <span>{error}</span>
-                    <button className="btn btn-ghost btn-sm" onClick={() => setError('')}>
-                        ✕
-                    </button>
-                </div>
-            )}
-            {success && (
-                <div className="alert alert-success">
-                    <span>{success}</span>
-                    <button className="btn btn-ghost btn-sm" onClick={() => setSuccess('')}>
-                        ✕
-                    </button>
-                </div>
-            )}
 
             {/* 班段規則設定 */}
             {!hasShiftRules && (
@@ -156,14 +137,14 @@ export default function AdminPage() {
                         {admins.map((admin) => (
                             <div
                                 key={admin.email}
-                                className="flex items-center justify-between bg-base-200 rounded-lg p-3"
+                                className="flex items-center justify-between bg-base-200 rounded-box p-3"
                             >
                                 <div>
                                     <div className="font-medium">{admin.name}</div>
                                     <div className="text-sm text-base-content/70">{admin.email}</div>
                                 </div>
                                 <button
-                                    className="btn btn-ghost btn-sm text-error"
+                                    className="btn btn-outline btn-sm text-error"
                                     onClick={() => handleRemoveAdmin(admin.email)}
                                     disabled={admins.length <= 1}
                                 >
@@ -223,3 +204,4 @@ export default function AdminPage() {
         </div>
     );
 }
+
