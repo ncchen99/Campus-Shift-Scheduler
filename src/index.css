@@ -169,3 +169,17 @@
 .mobile-calendar-item.expanded {
   background-color: oklch(95% 0.02 75);
 }
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-spin-slow {
+  animation: spin 3s linear infinite;
+}

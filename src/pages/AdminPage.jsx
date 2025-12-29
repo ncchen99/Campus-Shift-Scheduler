@@ -160,14 +160,14 @@ export default function AdminPage() {
                         {admins.map((admin) => (
                             <div
                                 key={admin.email}
-                                className="flex items-center justify-between bg-base-200 rounded-box p-3"
+                                className="flex flex-col sm:flex-row sm:items-center justify-between bg-base-200 rounded-box p-3 gap-2"
                             >
-                                <div>
-                                    <div className="font-medium">{admin.name}</div>
-                                    <div className="text-sm text-base-content/70">{admin.email}</div>
+                                <div className="min-w-0">
+                                    <div className="font-medium truncate">{admin.name}</div>
+                                    <div className="text-sm text-base-content/70 break-all">{admin.email}</div>
                                 </div>
                                 <button
-                                    className="btn btn-ghost btn-sm text-error"
+                                    className="btn btn-ghost btn-sm text-error self-end sm:self-auto"
                                     onClick={() => handleRemoveAdmin(admin.email)}
                                     disabled={admins.length <= 1}
                                 >
@@ -223,24 +223,24 @@ export default function AdminPage() {
                     <h3 className="card-title">新增管理員</h3>
 
                     <form onSubmit={handleAddAdmin} className="space-y-4">
-                        <div className="flex flex-col sm:flex-row gap-3">
+                        <div className="flex flex-col sm:flex-row gap-3 items-stretch">
                             <input
                                 type="email"
-                                className="input input-bordered flex-1"
+                                className="input input-bordered flex-1 h-12 min-h-[3rem] w-full"
                                 placeholder="Email"
                                 value={newEmail}
                                 onChange={(e) => setNewEmail(e.target.value)}
                             />
                             <input
                                 type="text"
-                                className="input input-bordered flex-1"
+                                className="input input-bordered flex-1 h-12 min-h-[3rem] w-full"
                                 placeholder="姓名（可選）"
                                 value={newName}
                                 onChange={(e) => setNewName(e.target.value)}
                             />
                             <button
                                 type="submit"
-                                className={`btn btn-primary ${adding ? 'loading' : ''}`}
+                                className={`btn btn-primary h-12 min-h-[3rem] ${adding ? 'loading' : ''}`}
                                 disabled={adding}
                             >
                                 {adding ? '新增中...' : '新增'}
