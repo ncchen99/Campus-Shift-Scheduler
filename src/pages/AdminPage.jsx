@@ -7,12 +7,15 @@ import {
     removeAdmin,
     initializeShiftRules,
     getShiftRules,
+    getActiveUsers,
+    deleteUser,
 } from '../services/firestore';
 
 export default function AdminPage() {
     const { user } = useAuth();
     const { showToast } = useToast();
     const [admins, setAdmins] = useState([]);
+    const [users, setUsers] = useState([]);
     const [loading, setLoading] = useState(true);
     const [newEmail, setNewEmail] = useState('');
     const [newName, setNewName] = useState('');
@@ -26,11 +29,13 @@ export default function AdminPage() {
     const loadData = async () => {
         setLoading(true);
         try {
-            const [adminList, rules] = await Promise.all([
+            const [adminList, userList, rules] = await Promise.all([
                 getAdmins(),
+                getActiveUsers(),
                 getShiftRules(),
             ]);
             setAdmins(adminList);
+            setUsers(userList);
             setHasShiftRules(rules.length > 0);
         } catch (error) {
             console.error('Error loading admins:', error);
@@ -83,6 +88,24 @@ export default function AdminPage() {
         }
     };
 
+    const handleDeleteUser = async (email, name) => {
+        if (email === user.email) {
+            showToast('不能刪除自己', 'error');
+            return;
+        }
+
+        if (!confirm(`確定要移除用戶 ${name || email} 嗎？\n這將使其無法登入且不顯示在排班名單中。`)) return;
+
+        try {
+            await deleteUser(email);
+            showToast('已移除用戶', 'success');
+            await loadData();
+        } catch (error) {
+            console.error('Error deleting user:', error);
+            showToast('移除失敗：' + error.message, 'error');
+        }
+    };
+
     const handleInitializeRules = async () => {
         if (!confirm('確定要初始化預設班段規則嗎？這會覆蓋現有規則。')) return;
 
@@ -131,7 +154,7 @@ export default function AdminPage() {
             {/* 管理員列表 */}
             <div className="card bg-base-100 shadow-lg">
                 <div className="card-body">
-                    <h3 className="card-title">管理員列表</h3>
+                    <h3 className="card-title text-primary">管理員列表</h3>
 
                     <div className="space-y-2">
                         {admins.map((admin) => (
@@ -144,14 +167,52 @@ export default function AdminPage() {
                                     <div className="text-sm text-base-content/70">{admin.email}</div>
                                 </div>
                                 <button
-                                    className="btn btn-outline btn-sm text-error"
+                                    className="btn btn-ghost btn-sm text-error"
                                     onClick={() => handleRemoveAdmin(admin.email)}
                                     disabled={admins.length <= 1}
                                 >
-                                    移除
+                                    取消管理權限
                                 </button>
                             </div>
                         ))}
+                    </div>
+                </div>
+            </div>
+
+            {/* 用戶列表 */}
+            <div className="card bg-base-100 shadow-lg">
+                <div className="card-body">
+                    <h3 className="card-title text-secondary">所有用戶列表</h3>
+                    <p className="text-xs text-base-content/60 mb-2">列出所有在系統中註冊且啟用的用戶</p>
+
+                    <div className="space-y-2 max-h-[400px] overflow-y-auto pr-1">
+                        {users.length === 0 ? (
+                            <div className="text-center py-4 text-base-content/50 italic">暫無用戶資料</div>
+                        ) : (
+                            users.map((u) => (
+                                <div
+                                    key={u.id}
+                                    className="flex items-center justify-between bg-base-200 rounded-box p-3"
+                                >
+                                    <div>
+                                        <div className="font-medium flex items-center gap-2">
+                                            {u.name}
+                                            {u.role === 'admin' && (
+                                                <span className="badge badge-primary badge-xs">Admin</span>
+                                            )}
+                                        </div>
+                                        <div className="text-sm text-base-content/70">{u.id}</div>
+                                    </div>
+                                    <button
+                                        className="btn btn-outline btn-error btn-sm"
+                                        onClick={() => handleDeleteUser(u.id, u.name)}
+                                        disabled={u.id === user.email}
+                                    >
+                                        移除
+                                    </button>
+                                </div>
+                            ))
+                        )}
                     </div>
                 </div>
             </div>

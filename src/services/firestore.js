@@ -9,7 +9,8 @@ import {
     where,
     orderBy,
     writeBatch,
-    serverTimestamp
+    serverTimestamp,
+    collectionGroup
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 
@@ -92,6 +93,44 @@ export async function removeAdmin(email) {
     const userSnap = await getDoc(userRef);
     if (userSnap.exists()) {
         await setDoc(userRef, { role: 'user' }, { merge: true });
+    }
+}
+
+export async function deleteUser(email) {
+    // 1. 停用帳號權限 (立即生效)
+    const userRef = doc(db, 'users', email);
+    await setDoc(userRef, { active: false }, { merge: true });
+
+    const adminRef = doc(db, 'admins', email);
+    await setDoc(adminRef, { active: false }, { merge: true });
+
+    // 2. 搜尋並清理所有相關資料表紀錄
+    // 我們使用 collectionGroup('entries') 來搜尋所有月份下的資料
+    // 注意：這通常需要在 Firebase Console 建立 Collection Group 索引
+    const refsToDelete = [];
+
+    try {
+        // 搜尋沒空紀錄與特殊需求 (皆使用 userId 欄位)
+        const q1 = query(collectionGroup(db, 'entries'), where('userId', '==', email));
+        const s1 = await getDocs(q1);
+        s1.forEach(d => refsToDelete.push(d.ref));
+
+        // 搜尋排班紀錄 (使用 assignedUserId 欄位)
+        const q2 = query(collectionGroup(db, 'entries'), where('assignedUserId', '==', email));
+        const s2 = await getDocs(q2);
+        s2.forEach(d => refsToDelete.push(d.ref));
+    } catch (error) {
+        console.error('Error fetching historical data for deletion:', error);
+        // 如果索引尚未建立，至少核心停權已完成，拋出錯誤讓 UI 提示
+        throw new Error('帳號已停權，但部分歷史資料清理失敗（可能需要建立 Firebase 索引）。' + error.message);
+    }
+
+    // 分批執行刪除 (Firestore 每批上限 500 筆)
+    for (let i = 0; i < refsToDelete.length; i += 500) {
+        const batch = writeBatch(db);
+        const chunk = refsToDelete.slice(i, i + 500);
+        chunk.forEach(ref => batch.delete(ref));
+        await batch.commit();
     }
 }
 

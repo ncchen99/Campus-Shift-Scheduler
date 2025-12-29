@@ -51,6 +51,12 @@ service cloud.firestore {
       );
     }
     
+    // 支援全域搜尋與大掃除 (Collection Group)
+    match /{path=**}/entries/{docId} {
+      allow read: if request.auth != null;
+      allow write: if isLeaderOrAdmin();
+    }
+    
     // 使用者資料
     match /users/{email} {
       // 所有已登入用戶可讀
