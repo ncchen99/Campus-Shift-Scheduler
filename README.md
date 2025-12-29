@@ -2,7 +2,7 @@
 
 校園活動中心工讀生排班管理系統。
 
-| 登記 | 排班 | 
+| 使用者登記 | 管理員排班 | 
 | --- | --- | 
 | ![Demo](docs/images/demo1.png) | ![Demo](docs/images/demo2.png) |
 
