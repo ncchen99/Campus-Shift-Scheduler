@@ -150,12 +150,11 @@ export default function RosterPage() {
               transition-colors
             `}
                     >
-                        <span className="text-xs truncate flex-1">
-                            {assignment ? (
-                                <span className="font-medium">{assignedUser?.name || assignment.assignedUserId.split('@')[0]}</span>
-                            ) : (
-                                <span className="text-base-content/50">{shift.label}</span>
-                            )}
+                        <span className={`text-xs truncate flex-1 ${assignment ? 'font-medium' : 'text-base-content/50'}`}>
+                            {assignment
+                                ? (assignedUser?.name || assignment.assignedUserId.split('@')[0])
+                                : shift.label
+                            }
                         </span>
                         <svg
                             className="w-3 h-3 opacity-50"
@@ -189,20 +188,17 @@ export default function RosterPage() {
                             ))
                         )}
                         {assignment && (
-                            <>
-                                <li className="divider my-0"></li>
-                                <li>
-                                    <button
-                                        className="text-error text-sm"
-                                        onClick={() => handleClearAssignment(day.date, shift.ruleId)}
-                                    >
-                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4 mr-1">
-                                            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                                        </svg>
-                                        清除指派
-                                    </button>
-                                </li>
-                            </>
+                            <li className="border-t border-base-300 mt-1 pt-1">
+                                <button
+                                    className="text-error text-sm"
+                                    onClick={() => handleClearAssignment(day.date, shift.ruleId)}
+                                >
+                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4 mr-1">
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                                    </svg>
+                                    清除指派
+                                </button>
+                            </li>
                         )}
                     </ul>
                 </div>
