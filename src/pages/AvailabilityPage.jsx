@@ -285,44 +285,50 @@ export default function AvailabilityPage() {
             </div>
 
             {/* 操作按鈕與自動儲存狀態 */}
-            <div className="flex flex-wrap items-center justify-between gap-3 bg-base-100 p-4 rounded-box shadow-lg sticky bottom-4 z-10 border border-base-200">
-                <div className="flex items-center gap-2">
+            <div className="flex items-center justify-between gap-1.5 sm:gap-3 bg-base-100 p-2.5 sm:p-4 rounded-box shadow-lg sticky bottom-4 z-10 border border-base-200">
+                <div className="flex items-center gap-1 sm:gap-2 min-w-0 flex-shrink">
                     {saveStatus === 'saving' && (
-                        <div className="flex items-center gap-2 text-primary text-sm font-medium">
+                        <div className="flex items-center gap-1 sm:gap-2 text-primary text-xs sm:text-sm font-medium whitespace-nowrap">
                             <span className="loading loading-spinner loading-xs"></span>
-                            自動儲存中...
+                            <span className="hidden sm:inline">自動儲存中...</span>
+                            <span className="sm:hidden">儲存中</span>
                         </div>
                     )}
                     {saveStatus === 'dirty' && (
-                        <div className="text-warning text-sm font-medium flex items-center gap-1">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4 animate-spin-slow">
+                        <div className="text-warning text-xs sm:text-sm font-medium flex items-center gap-0.5 sm:gap-1 whitespace-nowrap">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5 sm:w-4 sm:h-4 animate-spin-slow flex-shrink-0">
                                 <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
                             </svg>
-                            3秒後自動儲存
+                            <span className="hidden sm:inline">3秒後自動儲存</span>
+                            <span className="sm:hidden">待儲存</span>
                         </div>
                     )}
                     {saveStatus === 'saved' && (
-                        <div className="text-success text-sm font-medium flex items-center gap-1">
-                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+                        <div className="text-success text-xs sm:text-sm font-medium flex items-center gap-0.5 sm:gap-1 whitespace-nowrap">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0">
                                 <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.857-9.809a.75.75 0 00-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 10-1.06 1.061l2.5 2.5a.75.75 0 001.137-.089l4-5.5z" clipRule="evenodd" />
                             </svg>
-                            已儲存
+                            <span className="hidden sm:inline">已儲存</span>
+                            <span className="sm:hidden">✓</span>
                         </div>
                     )}
                     {saveStatus === 'error' && (
-                        <div className="text-error text-sm font-medium">儲存失敗，請檢查網路</div>
+                        <div className="text-error text-xs sm:text-sm font-medium whitespace-nowrap">
+                            <span className="hidden sm:inline">儲存失敗，請檢查網路</span>
+                            <span className="sm:hidden">失敗</span>
+                        </div>
                     )}
                 </div>
 
-                <div className="flex gap-3">
+                <div className="flex gap-1.5 sm:gap-3 flex-shrink-0">
                     <button
-                        className="btn btn-ghost btn-sm"
+                        className="btn btn-ghost btn-xs sm:btn-sm"
                         onClick={handleClearAll}
                     >
                         清空全部
                     </button>
                     <button
-                        className={`btn btn-primary btn-sm px-6 ${saving ? 'loading' : ''}`}
+                        className={`btn btn-primary btn-xs sm:btn-sm px-3 sm:px-6 ${saving ? 'loading' : ''}`}
                         onClick={() => handleSave(false)}
                         disabled={saving}
                     >
