@@ -369,8 +369,7 @@ export default function RosterPage() {
                 color: userColor.text,
                 borderLeftColor: userColor.text,
                 borderLeftWidth: '4px',
-                borderStyle: 'solid',
-                filter: isMyShift ? 'saturate(1.5)' : 'saturate(0.5) opacity(0.7)'
+                borderStyle: 'solid'
             } : {};
 
             // 動態調整下拉選單方向：左側向右展開，右側向左展開
@@ -584,10 +583,7 @@ export default function RosterPage() {
                                             <div
                                                 key={w.userId}
                                                 className="flex justify-between items-center bg-base-200 rounded-box p-3 border-l-4"
-                                                style={{
-                                                    borderLeftColor: wColor?.text || 'transparent',
-                                                    filter: (w.userId === user?.email) ? 'saturate(1.5)' : 'saturate(0.5) opacity(0.7)'
-                                                }}
+                                                style={{ borderLeftColor: wColor?.text || 'transparent' }}
                                             >
                                                 <span className="font-medium text-sm">{w.name}</span>
                                                 <div className="flex gap-3 text-xs">
