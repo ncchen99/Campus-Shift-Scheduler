@@ -170,16 +170,17 @@ export default function RosterPage() {
         // 1. 樂觀更新 UI（立即回應）
         updateLocalRoster(date, ruleId, userId);
 
-        // 如果啟用同日補齊，覆蓋該時段之後的所有時段（不論是否已有人）
+        // 如果啟用同日補齊，補齊該時段之後尚未指派的時段（不覆蓋已有人的）
         if (autoFillEnabled && dayShifts && userId) {
             dayShifts.forEach((shift, idx) => {
-                // 覆蓋點擊時段之後的所有時段
+                // 只處理點擊時段之後的時段
                 if (idx > shiftIndex && shift.ruleId !== ruleId) {
                     const otherKey = `${date}_${shift.ruleId}`;
+                    const hasExistingAssignment = previousRoster.some(r => r.date === date && r.ruleId === shift.ruleId);
                     const isUserUnavail = (unavailabilityMap[otherKey] || []).includes(userId);
 
-                    // 只要使用者有空，就覆蓋指派（即使原本已有人）
-                    if (!isUserUnavail) {
+                    // 只有在該時段尚未有人、且使用者有空時，才補齊
+                    if (!hasExistingAssignment && !isUserUnavail) {
                         updateLocalRoster(date, shift.ruleId, userId);
                     }
                 }
@@ -194,7 +195,7 @@ export default function RosterPage() {
                 ruleId,
                 userId,
                 user.email,
-                { autoFillSameDay: autoFillEnabled, dayShifts, shiftIndex, overwriteExisting: true }
+                { autoFillSameDay: autoFillEnabled, dayShifts, shiftIndex, overwriteExisting: false }
             );
 
             if (result.success) {
@@ -297,7 +298,7 @@ export default function RosterPage() {
             });
 
             if (result.success) {
-                showToast(`成功匯出 ${result.count} 個班次到行事曆`, 'success');
+                showToast(`已匯出 ${result.count} 個班次，請將檔案匯入常用的行事曆軟體`, 'success');
             } else {
                 showToast(result.message, 'info');
             }
@@ -357,6 +358,7 @@ export default function RosterPage() {
                 : null;
             const isPending = pendingOperations.has(key);
             const userColor = assignedUser ? userColorMap[assignedUser.email] : null;
+            const isMyShift = assignedUser?.email === user?.email;
 
             // 最後的時段也需要向上展開
             const isLastShift = shiftIndex === day.shifts.length - 1;
@@ -367,7 +369,8 @@ export default function RosterPage() {
                 color: userColor.text,
                 borderLeftColor: userColor.text,
                 borderLeftWidth: '4px',
-                borderStyle: 'solid'
+                borderStyle: 'solid',
+                filter: isMyShift ? 'saturate(1.5)' : 'saturate(0.5) opacity(0.7)'
             } : {};
 
             // 動態調整下拉選單方向：左側向右展開，右側向左展開
@@ -409,7 +412,7 @@ export default function RosterPage() {
                     {/* 下拉選單 */}
                     <ul
                         tabIndex={0}
-                        className="dropdown-content menu bg-base-100 rounded-box w-52 shadow-lg z-50 max-h-60 overflow-y-auto"
+                        className="dropdown-content menu bg-base-100 rounded-box w-52 shadow-lg z-50 max-h-96 overflow-y-auto flex-nowrap"
                     >
                         {candidates.length === 0 ? (
                             <li className="text-base-content/50 p-3 text-center text-sm">
@@ -502,7 +505,7 @@ export default function RosterPage() {
                             className="btn btn-sm btn-primary"
                             onClick={handleDownloadMyICS}
                             disabled={exportingICS || myShiftsCount === 0}
-                            title={myShiftsCount === 0 ? '您本月沒有排班' : `下載我的 ${myShiftsCount} 個班次`}
+                            title={myShiftsCount === 0 ? '您本月沒有排班' : '匯出我的排班行事曆'}
                         >
                             {exportingICS ? (
                                 <span className="loading loading-spinner loading-xs"></span>
@@ -511,7 +514,7 @@ export default function RosterPage() {
                                     <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
                                 </svg>
                             )}
-                            我的行事曆
+                            匯出行事曆
                         </button>
                     </div>
                 </div>
@@ -581,7 +584,10 @@ export default function RosterPage() {
                                             <div
                                                 key={w.userId}
                                                 className="flex justify-between items-center bg-base-200 rounded-box p-3 border-l-4"
-                                                style={{ borderLeftColor: wColor?.text || 'transparent' }}
+                                                style={{
+                                                    borderLeftColor: wColor?.text || 'transparent',
+                                                    filter: (w.userId === user?.email) ? 'saturate(1.5)' : 'saturate(0.5) opacity(0.7)'
+                                                }}
                                             >
                                                 <span className="font-medium text-sm">{w.name}</span>
                                                 <div className="flex gap-3 text-xs">

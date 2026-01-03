@@ -122,7 +122,7 @@ export default function ViewRosterPage() {
             });
 
             if (result.success) {
-                showToast(`成功匯出 ${result.count} 個班次到行事曆`, 'success');
+                showToast(`已匯出 ${result.count} 個班次，請將檔案匯入常用的行事曆軟體`, 'success');
             } else {
                 showToast(result.message, 'info');
             }
@@ -150,7 +150,8 @@ export default function ViewRosterPage() {
                 color: userColor.text,
                 borderLeftColor: userColor.text,
                 borderLeftWidth: '4px',
-                borderStyle: 'solid'
+                borderStyle: 'solid',
+                filter: isMyShift ? 'saturate(1.5)' : 'saturate(0.5) opacity(0.7)'
             } : {};
 
             return (
@@ -160,7 +161,6 @@ export default function ViewRosterPage() {
                     className={`
                         flex items-center justify-between p-2 rounded-btn w-full
                         ${!assignment ? 'bg-base-200' : ''}
-                        ${isMyShift ? 'ring-2 ring-primary ring-offset-1' : ''}
                     `}
                 >
                     <span className={`text-sm truncate flex-1 ${assignment ? 'font-medium' : 'text-base-content/50'}`}>
@@ -208,6 +208,7 @@ export default function ViewRosterPage() {
                             className="btn btn-sm btn-primary"
                             onClick={handleDownloadICS}
                             disabled={exporting || myShiftsCount === 0}
+                            title={myShiftsCount === 0 ? '您本月沒有排班' : '匯出我的排班行事曆'}
                         >
                             {exporting ? (
                                 <span className="loading loading-spinner loading-xs"></span>
@@ -216,7 +217,7 @@ export default function ViewRosterPage() {
                                     <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
                                 </svg>
                             )}
-                            下載行事曆
+                            匯出行事曆
                         </button>
                     </div>
                 </div>
@@ -257,8 +258,11 @@ export default function ViewRosterPage() {
                                     return (
                                         <div
                                             key={w.userId}
-                                            className={`flex justify-between items-center bg-base-200 rounded-box p-3 border-l-4 ${isMe ? 'ring-2 ring-primary' : ''}`}
-                                            style={{ borderLeftColor: wColor?.text || 'transparent' }}
+                                            className="flex justify-between items-center bg-base-200 rounded-box p-3 border-l-4"
+                                            style={{
+                                                borderLeftColor: wColor?.text || 'transparent',
+                                                filter: isMe ? 'saturate(1.5)' : 'saturate(0.5) opacity(0.7)'
+                                            }}
                                         >
                                             <span className="font-medium text-sm flex items-center gap-2">
                                                 {w.name}
