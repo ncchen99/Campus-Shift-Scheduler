@@ -31,7 +31,7 @@ export default function Layout({ children, activeTab, onTabChange }) {
 
     const tabs = [
         { id: 'availability', label: '填寫', icon: <CalendarIcon />, show: true },
-        { id: 'roster', label: '排班管理', icon: <ClipboardDocumentListIcon />, show: isLeader },
+        { id: 'roster', label: isLeader ? '排班管理' : '查看班表', icon: <ClipboardDocumentListIcon />, show: true },
         { id: 'admin', label: '系統管理', icon: <Cog6ToothIcon />, show: isAdmin },
     ];
 

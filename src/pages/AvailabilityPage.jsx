@@ -101,19 +101,32 @@ export default function AvailabilityPage() {
         }
     };
 
-    // 點擊第一個時段時自動勾選全天
-    const handleFirstShiftClick = (day, shift, isChecked) => {
+    // 點擊時段自動勾選（點擊的時段及之後的時段都會被選取）
+    // 但如果當日已有任何選取，就不啟用自動補齊（代表使用者想個別操作）
+    const handleShiftClick = (day, shift, shiftIndex, isChecked) => {
         if (!autoFillEnabled) {
             handleCheckboxChange(day.date, shift.ruleId, isChecked);
             return;
         }
 
+        // 檢查當日是否已有任何時段被選取
+        const hasDaySelections = unavailability.some(u => u.date === day.date);
+
         if (isChecked) {
-            // 勾選全天的所有時段
+            // 如果當日已有選取，則不自動補齊，只操作單一時段
+            if (hasDaySelections) {
+                handleCheckboxChange(day.date, shift.ruleId, isChecked);
+                return;
+            }
+
+            // 當日無選取時，勾選該時段及之後的所有時段
             const newUnavail = [...unavailability];
-            day.shifts.forEach(s => {
-                if (!newUnavail.some(u => u.date === day.date && u.ruleId === s.ruleId)) {
-                    newUnavail.push({ date: day.date, ruleId: s.ruleId });
+            day.shifts.forEach((s, idx) => {
+                // 只處理當前時段及之後的時段
+                if (idx >= shiftIndex) {
+                    if (!newUnavail.some(u => u.date === day.date && u.ruleId === s.ruleId)) {
+                        newUnavail.push({ date: day.date, ruleId: s.ruleId });
+                    }
                 }
             });
             setUnavailability(newUnavail);
@@ -203,11 +216,7 @@ export default function AvailabilityPage() {
                         className="hidden" // 隱藏原生 checkbox
                         checked={checked}
                         onChange={(e) => {
-                            if (index === 0) {
-                                handleFirstShiftClick(day, shift, e.target.checked);
-                            } else {
-                                handleCheckboxChange(day.date, shift.ruleId, e.target.checked);
-                            }
+                            handleShiftClick(day, shift, index, e.target.checked);
                         }}
                     />
                     <span className="text-[10px] sm:text-xs flex-1 truncate font-medium" title={shift.label}>

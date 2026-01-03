@@ -236,21 +236,25 @@ export async function setRosterCell(month, date, ruleId, userId, assignedBy, opt
 
     const affectedCells = [{ date, ruleId, userId }];
 
-    // 同日自動補齊
+    // 同日自動補齊（覆蓋 shiftIndex 之後的所有時段）
     if (options.autoFillSameDay && options.dayShifts) {
-        for (const shift of options.dayShifts) {
-            if (shift.ruleId !== ruleId) {
-                // 檢查是否已有人
+        const currentShiftIndex = options.shiftIndex ?? 0;
+        const overwriteExisting = options.overwriteExisting ?? false;
+
+        for (let i = 0; i < options.dayShifts.length; i++) {
+            const shift = options.dayShifts[i];
+            // 只處理當前點擊時段"之後"的時段
+            if (i > currentShiftIndex && shift.ruleId !== ruleId) {
                 const otherCellId = `${date}_${shift.ruleId}`;
                 const otherRef = doc(db, 'roster', month, 'entries', otherCellId);
-                const otherSnap = await getDoc(otherRef);
 
-                if (!otherSnap.exists()) {
-                    // 檢查是否沒空
-                    const unavailRef = doc(db, 'unavailability', month, 'entries', `${userId}_${date}_${shift.ruleId}`);
-                    const unavailSnap = await getDoc(unavailRef);
+                // 檢查是否沒空
+                const unavailRef = doc(db, 'unavailability', month, 'entries', `${userId}_${date}_${shift.ruleId}`);
+                const unavailSnap = await getDoc(unavailRef);
 
-                    if (!unavailSnap.exists()) {
+                if (!unavailSnap.exists()) {
+                    // 如果允許覆蓋，直接寫入
+                    if (overwriteExisting) {
                         await setDoc(otherRef, {
                             date,
                             ruleId: shift.ruleId,
@@ -259,6 +263,19 @@ export async function setRosterCell(month, date, ruleId, userId, assignedBy, opt
                             ts: serverTimestamp(),
                         });
                         affectedCells.push({ date, ruleId: shift.ruleId, userId });
+                    } else {
+                        // 只有在沒有人時才指派
+                        const otherSnap = await getDoc(otherRef);
+                        if (!otherSnap.exists()) {
+                            await setDoc(otherRef, {
+                                date,
+                                ruleId: shift.ruleId,
+                                assignedUserId: userId,
+                                assignedBy,
+                                ts: serverTimestamp(),
+                            });
+                            affectedCells.push({ date, ruleId: shift.ruleId, userId });
+                        }
                     }
                 }
             }

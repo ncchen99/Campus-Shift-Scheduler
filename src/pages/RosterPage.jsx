@@ -16,6 +16,7 @@ import {
     getMonthlyWorkload,
 } from '../services/firestore';
 import { exportRosterToExcel } from '../services/excelExport';
+import { exportUserScheduleToICS } from '../services/icsExport';
 
 // 預定義的顏色列表（用於區分不同使用者）- 與 Excel 匯出保持一致
 const USER_UI_COLORS = [
@@ -49,6 +50,7 @@ export default function RosterPage() {
     const [autoFillEnabled, setAutoFillEnabled] = useState(true);
     const [activeSidebar, setActiveSidebar] = useState('requests');
     const [exporting, setExporting] = useState(false);
+    const [exportingICS, setExportingICS] = useState(false);
     const [pendingOperations, setPendingOperations] = useState(new Set());
 
     function getDefaultMonth() {
@@ -152,7 +154,8 @@ export default function RosterPage() {
     }, [user]);
 
     // 指派人員（樂觀更新 + 背景處理）
-    const handleAssign = useCallback(async (date, ruleId, userId, dayShifts) => {
+    // shiftIndex: 當前被點擊的時段索引，用於同日自動補齊（會覆蓋該時段之後的所有時段）
+    const handleAssign = useCallback(async (date, ruleId, userId, dayShifts, shiftIndex = 0) => {
         const operationKey = `${date}_${ruleId}`;
 
         // 防止重複操作
@@ -167,15 +170,16 @@ export default function RosterPage() {
         // 1. 樂觀更新 UI（立即回應）
         updateLocalRoster(date, ruleId, userId);
 
-        // 如果啟用同日補齊，也要樂觀更新這些格子
+        // 如果啟用同日補齊，覆蓋該時段之後的所有時段（不論是否已有人）
         if (autoFillEnabled && dayShifts && userId) {
-            dayShifts.forEach(shift => {
-                if (shift.ruleId !== ruleId) {
+            dayShifts.forEach((shift, idx) => {
+                // 覆蓋點擊時段之後的所有時段
+                if (idx > shiftIndex && shift.ruleId !== ruleId) {
                     const otherKey = `${date}_${shift.ruleId}`;
-                    const hasAssignment = previousRoster.some(r => r.date === date && r.ruleId === shift.ruleId);
                     const isUserUnavail = (unavailabilityMap[otherKey] || []).includes(userId);
 
-                    if (!hasAssignment && !isUserUnavail) {
+                    // 只要使用者有空，就覆蓋指派（即使原本已有人）
+                    if (!isUserUnavail) {
                         updateLocalRoster(date, shift.ruleId, userId);
                     }
                 }
@@ -190,7 +194,7 @@ export default function RosterPage() {
                 ruleId,
                 userId,
                 user.email,
-                { autoFillSameDay: autoFillEnabled, dayShifts }
+                { autoFillSameDay: autoFillEnabled, dayShifts, shiftIndex, overwriteExisting: true }
             );
 
             if (result.success) {
@@ -217,9 +221,43 @@ export default function RosterPage() {
         }
     }, [roster, currentMonth, user, autoFillEnabled, shiftRules, users, unavailabilityMap, updateLocalRoster, showToast, pendingOperations]);
 
-    // 清除指派
+    // 清除單一時段指派
     const handleClearAssignment = async (date, ruleId) => {
-        await handleAssign(date, ruleId, null, []);
+        await handleAssign(date, ruleId, null, [], 0);
+    };
+
+    // 清除當日所有排班
+    const handleClearDayAssignments = async (date, dayShifts) => {
+        const previousRoster = [...roster];
+
+        try {
+            // 樂觀更新 - 清除當日所有時段
+            dayShifts.forEach(shift => {
+                updateLocalRoster(date, shift.ruleId, null);
+            });
+
+            // 背景處理 Firebase - 逐一刪除
+            for (const shift of dayShifts) {
+                const cellId = `${date}_${shift.ruleId}`;
+                const hasAssignment = roster.some(r => r.date === date && r.ruleId === shift.ruleId);
+                if (hasAssignment) {
+                    await setRosterCell(currentMonth, date, shift.ruleId, null, user.email, {});
+                }
+            }
+
+            // 重新載入資料
+            const rosterData = await getRoster(currentMonth);
+            setRoster(rosterData);
+
+            const workloadData = getMonthlyWorkload(currentMonth, rosterData, shiftRules, users);
+            setWorkload(workloadData);
+
+            showToast('已清除當日所有排班', 'success');
+        } catch (error) {
+            console.error('Error clearing day:', error);
+            setRoster(previousRoster);
+            showToast('清除失敗：' + error.message, 'error');
+        }
     };
 
     // 匯出 Excel
@@ -244,10 +282,71 @@ export default function RosterPage() {
         }
     };
 
+    // 下載我的班表 ICS 檔案
+    const handleDownloadMyICS = async () => {
+        if (exportingICS) return;
+        setExportingICS(true);
+
+        try {
+            const result = exportUserScheduleToICS({
+                userEmail: user.email,
+                userName: userProfile?.name || user.email.split('@')[0],
+                roster,
+                shiftRules,
+                month: currentMonth,
+            });
+
+            if (result.success) {
+                showToast(`成功匯出 ${result.count} 個班次到行事曆`, 'success');
+            } else {
+                showToast(result.message, 'info');
+            }
+        } catch (error) {
+            console.error('匯出 ICS 失敗:', error);
+            showToast('匯出失敗，請稍後再試', 'error');
+        } finally {
+            setExportingICS(false);
+        }
+    };
+
+    // 計算當前使用者的班次數量
+    const myShiftsCount = useMemo(() => {
+        return roster.filter(r => r.assignedUserId === user?.email).length;
+    }, [roster, user]);
+
+    // 計算當日是否有任何排班
+    const hasDayAssignments = (date, dayShifts) => {
+        return dayShifts.some(shift => {
+            return roster.some(r => r.date === date && r.ruleId === shift.ruleId);
+        });
+    };
+
+    // 渲染日期標題區域（清除當日按鈕）
+    const renderDayHeader = (day) => {
+        const hasAssignments = hasDayAssignments(day.date, day.shifts);
+
+        if (!hasAssignments) return null;
+
+        return (
+            <button
+                className="btn btn-ghost btn-xs text-error hover:bg-error/20 p-0 min-h-0 h-5 w-5"
+                onClick={() => handleClearDayAssignments(day.date, day.shifts)}
+                title="清除當日所有排班"
+            >
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+            </button>
+        );
+    };
+
     // 渲染班段內容 - 使用下拉選單
-    const renderDayContent = (day, weekIndex, totalWeeks) => {
+    // dayIndex: 0=週日, 1=週一, ... 6=週六（用於判斷是否在畫面左側）
+    const renderDayContent = (day, weekIndex, totalWeeks, dayIndex = 0) => {
         // 判斷是否在最後兩週，需要向上展開選單
         const isNearBottom = weekIndex >= totalWeeks - 2;
+        // 判斷是否在畫面左側（週日或週一），需要向右展開選單而非向左
+        const isOnLeftSide = dayIndex <= 1;
 
         return day.shifts.map((shift, shiftIndex) => {
             const key = `${day.date}_${shift.ruleId}`;
@@ -271,8 +370,11 @@ export default function RosterPage() {
                 borderStyle: 'solid'
             } : {};
 
+            // 動態調整下拉選單方向：左側向右展開，右側向左展開
+            const dropdownClass = `dropdown w-full ${shouldDropUp ? 'dropdown-top' : ''} ${isOnLeftSide ? 'dropdown-start' : 'dropdown-end'}`;
+
             return (
-                <div key={shift.ruleId} className={`dropdown dropdown-end w-full ${shouldDropUp ? 'dropdown-top' : ''}`}>
+                <div key={shift.ruleId} className={dropdownClass}>
                     <div
                         tabIndex={0}
                         role="button"
@@ -320,7 +422,7 @@ export default function RosterPage() {
                                     <li key={c.email}>
                                         <button
                                             className="text-sm flex items-center gap-2"
-                                            onClick={() => handleAssign(day.date, shift.ruleId, c.email, day.shifts)}
+                                            onClick={() => handleAssign(day.date, shift.ruleId, c.email, day.shifts, shiftIndex)}
                                         >
                                             <span
                                                 className="w-3 h-3 rounded-full"
@@ -396,6 +498,21 @@ export default function RosterPage() {
                             )}
                             匯出 Excel
                         </button>
+                        <button
+                            className="btn btn-sm btn-primary"
+                            onClick={handleDownloadMyICS}
+                            disabled={exportingICS || myShiftsCount === 0}
+                            title={myShiftsCount === 0 ? '您本月沒有排班' : `下載我的 ${myShiftsCount} 個班次`}
+                        >
+                            {exportingICS ? (
+                                <span className="loading loading-spinner loading-xs"></span>
+                            ) : (
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
+                                </svg>
+                            )}
+                            我的行事曆
+                        </button>
                     </div>
                 </div>
 
@@ -406,9 +523,9 @@ export default function RosterPage() {
                 <div className="card bg-base-100 shadow-lg mb-20">
                     <div className="card-body p-4">
                         {isMobile ? (
-                            <MobileCalendar monthModel={monthModel} renderDayContent={renderDayContent} />
+                            <MobileCalendar monthModel={monthModel} renderDayContent={renderDayContent} renderDayHeader={renderDayHeader} />
                         ) : (
-                            <Calendar monthModel={monthModel} renderDayContent={renderDayContent} />
+                            <Calendar monthModel={monthModel} renderDayContent={renderDayContent} renderDayHeader={renderDayHeader} />
                         )}
                     </div>
                 </div>

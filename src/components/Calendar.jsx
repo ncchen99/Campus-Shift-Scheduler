@@ -3,6 +3,7 @@ import { getWeeksFromMonth } from '../services/firestore';
 export default function Calendar({
     monthModel,
     renderDayContent,
+    renderDayHeader,  // 可選：自訂日期標題區域（傳入 day 物件）
     className = ''
 }) {
     if (!monthModel || !monthModel.days.length) {
@@ -59,15 +60,19 @@ export default function Calendar({
                             >
                                 {/* 日期標題 */}
                                 <div className="flex justify-between items-center mb-2 pb-1 border-b border-base-300">
-                                    <span className="font-bold">{dateNum}日</span>
+                                    <div className="flex items-center gap-1">
+                                        <span className="font-bold">{dateNum}日</span>
+                                        {/* 自訂日期標題區域（如清除按鈕） */}
+                                        {renderDayHeader && renderDayHeader(day)}
+                                    </div>
                                     <span className={`text-xs ${day.isWeekend ? 'text-error' : 'text-base-content/60'}`}>
                                         週{day.dayName}
                                     </span>
                                 </div>
 
-                                {/* 班段內容 - 由父組件提供 */}
+                                {/* 班段內容 - 由父組件提供，傳入 dayIndex 用於判斷位置 */}
                                 <div className="space-y-1">
-                                    {renderDayContent(day, weekIndex, weeks.length)}
+                                    {renderDayContent(day, weekIndex, weeks.length, dayIndex)}
                                 </div>
                             </div>
                         );

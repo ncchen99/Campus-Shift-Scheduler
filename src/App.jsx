@@ -5,6 +5,7 @@ import Layout from './components/Layout';
 import LoginPage from './pages/LoginPage';
 import AvailabilityPage from './pages/AvailabilityPage';
 import RosterPage from './pages/RosterPage';
+import ViewRosterPage from './pages/ViewRosterPage';
 import AdminPage from './pages/AdminPage';
 
 function AppContent() {
@@ -30,8 +31,7 @@ function AppContent() {
 
   // 根據權限調整 tab
   const handleTabChange = (tab) => {
-    // 確保只有有權限的 tab 可以被選擇
-    if (tab === 'roster' && !isLeader) return;
+    // roster 分頁現在所有人都可以看（一般用戶看只讀版本）
     if (tab === 'admin' && !isAdmin) return;
     setActiveTab(tab);
   };
@@ -42,7 +42,8 @@ function AppContent() {
       case 'availability':
         return <AvailabilityPage />;
       case 'roster':
-        return isLeader ? <RosterPage /> : <AvailabilityPage />;
+        // 管理員/班長可完整編輯，一般用戶只能查看
+        return isLeader ? <RosterPage /> : <ViewRosterPage />;
       case 'admin':
         return isAdmin ? <AdminPage /> : <AvailabilityPage />;
       default:
