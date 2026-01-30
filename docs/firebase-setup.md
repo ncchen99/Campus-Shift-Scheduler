@@ -74,6 +74,13 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
     
+    // 確認狀態
+    match /availabilityConfirmation/{month}/entries/{userId} {
+      allow read: if request.auth != null;
+      // 本人可寫自己的確認狀態
+      allow write: if request.auth != null && request.auth.token.email == userId;
+    }
+    
     // 沒空資料
     match /unavailability/{month}/entries/{docId} {
       allow read: if request.auth != null;
@@ -93,6 +100,12 @@ service cloud.firestore {
     
     // 排班表（班長或管理員可修改）
     match /roster/{month}/entries/{docId} {
+      allow read: if request.auth != null;
+      allow write: if isLeaderOrAdmin();
+    }
+    
+    // 閉館日（只有班長或管理員可修改）
+    match /closedDays/{month}/entries/{docId} {
       allow read: if request.auth != null;
       allow write: if isLeaderOrAdmin();
     }

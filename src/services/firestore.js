@@ -47,15 +47,128 @@ export async function getActiveUsers() {
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 }
 
+// 取得已確認填寫的使用者（用於排班）
+export async function getConfirmedUsers(month) {
+    const usersRef = collection(db, 'users');
+    const q = query(usersRef, where('active', '==', true));
+    const snapshot = await getDocs(q);
+    const allUsers = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+    // 檢查每個使用者該月的確認狀態
+    const confirmedUsers = [];
+    for (const user of allUsers) {
+        const confirmRef = doc(db, 'availabilityConfirmation', month, 'entries', user.email);
+        const confirmSnap = await getDoc(confirmRef);
+        if (confirmSnap.exists() && confirmSnap.data().confirmed) {
+            confirmedUsers.push(user);
+        }
+    }
+    return confirmedUsers;
+}
+
+// 取得未確認填寫的使用者列表
+export async function getUnconfirmedUsers(month) {
+    const usersRef = collection(db, 'users');
+    const q = query(usersRef, where('active', '==', true));
+    const snapshot = await getDocs(q);
+    const allUsers = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+    // 檢查每個使用者該月的確認狀態
+    const unconfirmedUsers = [];
+    for (const user of allUsers) {
+        const confirmRef = doc(db, 'availabilityConfirmation', month, 'entries', user.email);
+        const confirmSnap = await getDoc(confirmRef);
+        if (!confirmSnap.exists() || !confirmSnap.data().confirmed) {
+            unconfirmedUsers.push(user);
+        }
+    }
+    return unconfirmedUsers;
+}
+
 export async function getUserByEmail(email) {
     const userRef = doc(db, 'users', email);
     const userSnap = await getDoc(userRef);
     return userSnap.exists() ? { id: userSnap.id, ...userSnap.data() } : null;
 }
 
+// 檢查暱稱是否已被其他使用者使用
+export async function checkNameExists(name, excludeEmail = null) {
+    const usersRef = collection(db, 'users');
+    const q = query(usersRef, where('name', '==', name), where('active', '==', true));
+    const snapshot = await getDocs(q);
+
+    if (snapshot.empty) {
+        return { exists: false };
+    }
+
+    // 檢查是否是同一個使用者（排除自己）
+    const matchedUser = snapshot.docs.find(doc => doc.id !== excludeEmail);
+    if (matchedUser) {
+        const userData = matchedUser.data();
+        // 隱藏部分 email 以保護隱私
+        const email = matchedUser.id;
+        const maskedEmail = email.substring(0, 3) + '***' + email.substring(email.indexOf('@'));
+        return { exists: true, email: maskedEmail, fullEmail: email };
+    }
+
+    return { exists: false };
+}
+
+// 刪除使用者帳號（用於登入失敗時清理）
+export async function deleteUserAccount(email) {
+    const userRef = doc(db, 'users', email);
+    await deleteDoc(userRef);
+}
+
 export async function updateUserRole(email, role) {
     const userRef = doc(db, 'users', email);
     await setDoc(userRef, { role }, { merge: true });
+}
+
+// ============ Availability Confirmation ============
+// 取得使用者該月的確認狀態
+export async function getAvailabilityConfirmation(email, month) {
+    const confirmRef = doc(db, 'availabilityConfirmation', month, 'entries', email);
+    const confirmSnap = await getDoc(confirmRef);
+    if (confirmSnap.exists()) {
+        return confirmSnap.data();
+    }
+    return { confirmed: false };
+}
+
+// 設定使用者該月的確認狀態
+export async function setAvailabilityConfirmation(email, month, confirmed) {
+    const confirmRef = doc(db, 'availabilityConfirmation', month, 'entries', email);
+    await setDoc(confirmRef, {
+        userId: email,
+        month,
+        confirmed,
+        ts: serverTimestamp(),
+    });
+}
+
+// ============ Closed Days (閉館日) ============
+// 取得該月所有閉館日
+export async function getClosedDays(month) {
+    const closedRef = collection(db, 'closedDays', month, 'entries');
+    const snapshot = await getDocs(closedRef);
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+}
+
+// 設定某天為閉館日
+export async function setClosedDay(month, date, closedBy) {
+    const closedRef = doc(db, 'closedDays', month, 'entries', date);
+    await setDoc(closedRef, {
+        date,
+        closedBy,
+        ts: serverTimestamp(),
+    });
+}
+
+// 取消某天的閉館狀態
+export async function unsetClosedDay(month, date) {
+    const closedRef = doc(db, 'closedDays', month, 'entries', date);
+    await deleteDoc(closedRef);
 }
 
 // ============ Admins ============

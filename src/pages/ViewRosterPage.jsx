@@ -11,6 +11,7 @@ import {
     getRoster,
     getActiveUsers,
     getMonthlyWorkload,
+    getClosedDays,
 } from '../services/firestore';
 import { exportUserScheduleToICS } from '../services/icsExport';
 
@@ -49,6 +50,9 @@ export default function ViewRosterPage() {
     const [loading, setLoading] = useState(true);
     const [exporting, setExporting] = useState(false);
 
+    // 閉館日
+    const [closedDays, setClosedDays] = useState([]);
+
     function getDefaultMonth() {
         const now = new Date();
         const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
@@ -62,15 +66,17 @@ export default function ViewRosterPage() {
     const loadAllData = async () => {
         setLoading(true);
         try {
-            const [rules, rosterData, usersData] = await Promise.all([
+            const [rules, rosterData, usersData, closed] = await Promise.all([
                 getShiftRules(),
                 getRoster(currentMonth),
                 getActiveUsers(),
+                getClosedDays(currentMonth),
             ]);
 
             setShiftRules(rules);
             setRoster(rosterData);
             setUsers(usersData);
+            setClosedDays(closed);
 
             const model = getMonthModel(currentMonth, rules);
             setMonthModel(model);
@@ -101,6 +107,14 @@ export default function ViewRosterPage() {
         });
         return map;
     }, [users]);
+
+    // 建立閉館日快速查詢 Set
+    const closedDaysSet = useMemo(() => {
+        return new Set(closedDays.map(d => d.date));
+    }, [closedDays]);
+
+    // 檢查日期是否為閉館日
+    const isClosedDay = (date) => closedDaysSet.has(date);
 
     // 計算當前使用者的班次數量
     const myShiftsCount = useMemo(() => {
@@ -136,6 +150,20 @@ export default function ViewRosterPage() {
 
     // 渲染班段內容 - 只讀模式
     const renderDayContent = (day) => {
+        const isClosed = isClosedDay(day.date);
+
+        // 如果是閉館日，顯示閉館提示
+        if (isClosed) {
+            return (
+                <div className="flex items-center justify-center p-3 bg-base-300/50 rounded-btn text-base-content/50">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4 mr-1">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                    </svg>
+                    <span className="text-sm font-medium">休館日</span>
+                </div>
+            );
+        }
+
         return day.shifts.map((shift) => {
             const key = `${day.date}_${shift.ruleId}`;
             const assignment = rosterMap[key];
@@ -229,9 +257,13 @@ export default function ViewRosterPage() {
                 <div className="card bg-base-100 shadow-lg mb-20">
                     <div className="card-body p-4">
                         {isMobile ? (
-                            <MobileCalendar monthModel={monthModel} renderDayContent={renderDayContent} />
+                            <MobileCalendar
+                                monthModel={monthModel}
+                                renderDayContent={renderDayContent}
+                                disabledDates={closedDays}
+                            />
                         ) : (
-                            <Calendar monthModel={monthModel} renderDayContent={renderDayContent} />
+                            <Calendar monthModel={monthModel} renderDayContent={renderDayContent} disabledDates={closedDays} />
                         )}
                     </div>
                 </div>

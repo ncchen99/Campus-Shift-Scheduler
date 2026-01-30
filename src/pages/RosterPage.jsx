@@ -14,6 +14,11 @@ import {
     getActiveUsers,
     setRosterCell,
     getMonthlyWorkload,
+    getConfirmedUsers,
+    getUnconfirmedUsers,
+    getClosedDays,
+    setClosedDay,
+    unsetClosedDay,
 } from '../services/firestore';
 import { exportRosterToExcel } from '../services/excelExport';
 import { exportUserScheduleToICS } from '../services/icsExport';
@@ -34,6 +39,9 @@ const USER_UI_COLORS = [
     { bg: '#FBE9E7', text: '#BF360C', border: '#FFCCBC' }, // 淺深橙
 ];
 
+// 閉館選項的特殊標識
+const CLOSED_OPTION = '__CLOSED__';
+
 export default function RosterPage() {
     const { user, userProfile } = useAuth();
     const { showToast } = useToast();
@@ -44,14 +52,19 @@ export default function RosterPage() {
     const [roster, setRoster] = useState([]);
     const [unavailability, setUnavailability] = useState([]);
     const [users, setUsers] = useState([]);
+    const [confirmedUsers, setConfirmedUsers] = useState([]);
+    const [unconfirmedUsers, setUnconfirmedUsers] = useState([]);
     const [specialRequests, setSpecialRequests] = useState([]);
     const [workload, setWorkload] = useState([]);
     const [loading, setLoading] = useState(true);
     const [autoFillEnabled, setAutoFillEnabled] = useState(true);
-    const [activeSidebar, setActiveSidebar] = useState('requests');
+    const [activeSidebar, setActiveSidebar] = useState('unconfirmed');
     const [exporting, setExporting] = useState(false);
     const [exportingICS, setExportingICS] = useState(false);
     const [pendingOperations, setPendingOperations] = useState(new Set());
+
+    // 閉館日
+    const [closedDays, setClosedDays] = useState([]);
 
     function getDefaultMonth() {
         const now = new Date();
@@ -68,17 +81,23 @@ export default function RosterPage() {
         setLoading(true);
         try {
             // 並行載入所有資料
-            const [rules, rosterData, unavailData, usersData] = await Promise.all([
+            const [rules, rosterData, unavailData, usersData, confirmed, unconfirmed, closed] = await Promise.all([
                 getShiftRules(),
                 getRoster(currentMonth),
                 getAllUnavailability(currentMonth),
                 getActiveUsers(),
+                getConfirmedUsers(currentMonth),
+                getUnconfirmedUsers(currentMonth),
+                getClosedDays(currentMonth),
             ]);
 
             setShiftRules(rules);
             setRoster(rosterData);
             setUnavailability(unavailData);
             setUsers(usersData);
+            setConfirmedUsers(confirmed);
+            setUnconfirmedUsers(unconfirmed);
+            setClosedDays(closed);
 
             const model = getMonthModel(currentMonth, rules);
             setMonthModel(model);
@@ -118,7 +137,7 @@ export default function RosterPage() {
         return map;
     }, [roster]);
 
-    // 建立使用者顏色對應 Map
+    // 建立使用者顏色對應 Map（只用已確認的使用者）
     const userColorMap = useMemo(() => {
         const map = {};
         users.sort((a, b) => a.email.localeCompare(b.email)).forEach((u, index) => {
@@ -127,11 +146,20 @@ export default function RosterPage() {
         return map;
     }, [users]);
 
-    // 取得某時段的可派人員（排除沒空者）
+    // 建立閉館日快速查詢 Set
+    const closedDaysSet = useMemo(() => {
+        return new Set(closedDays.map(d => d.date));
+    }, [closedDays]);
+
+    // 檢查日期是否為閉館日
+    const isClosedDay = (date) => closedDaysSet.has(date);
+
+    // 取得某時段的可派人員（排除沒空者，只顯示已確認的使用者）
     const getCandidates = (date, ruleId) => {
         const key = `${date}_${ruleId}`;
         const unavailUsers = unavailabilityMap[key] || [];
-        return users.filter((u) => !unavailUsers.includes(u.email));
+        // 只返回已確認填寫的使用者
+        return confirmedUsers.filter((u) => !unavailUsers.includes(u.email));
     };
 
     // 樂觀更新本地 roster 狀態
@@ -153,9 +181,59 @@ export default function RosterPage() {
         });
     }, [user]);
 
+    // 處理閉館日設定
+    const handleClosedDayToggle = async (date) => {
+        const operationKey = `closed_${date}`;
+        if (pendingOperations.has(operationKey)) return;
+
+        setPendingOperations(prev => new Set([...prev, operationKey]));
+
+        try {
+            if (isClosedDay(date)) {
+                // 取消閉館
+                await unsetClosedDay(currentMonth, date);
+                setClosedDays(prev => prev.filter(d => d.date !== date));
+                showToast(`已取消 ${date} 的休館設定`, 'info');
+            } else {
+                // 設定閉館
+                await setClosedDay(currentMonth, date, user.email);
+                setClosedDays(prev => [...prev, { date, closedBy: user.email }]);
+
+                // 同時清除該天的所有排班
+                const dayShifts = monthModel?.days.find(d => d.date === date)?.shifts || [];
+                for (const shift of dayShifts) {
+                    const hasAssignment = roster.some(r => r.date === date && r.ruleId === shift.ruleId);
+                    if (hasAssignment) {
+                        await setRosterCell(currentMonth, date, shift.ruleId, null, user.email, {});
+                    }
+                }
+
+                // 更新本地 roster 狀態
+                setRoster(prev => prev.filter(r => r.date !== date));
+
+                showToast(`已設定 ${date} 為休館日`, 'success');
+            }
+        } catch (error) {
+            console.error('Error toggling closed day:', error);
+            showToast('設定閉館日失敗', 'error');
+        } finally {
+            setPendingOperations(prev => {
+                const next = new Set(prev);
+                next.delete(operationKey);
+                return next;
+            });
+        }
+    };
+
     // 指派人員（樂觀更新 + 背景處理）
     // shiftIndex: 當前被點擊的時段索引，用於同日自動補齊（會覆蓋該時段之後的所有時段）
     const handleAssign = useCallback(async (date, ruleId, userId, dayShifts, shiftIndex = 0) => {
+        // 如果選擇閉館選項
+        if (userId === CLOSED_OPTION) {
+            await handleClosedDayToggle(date);
+            return;
+        }
+
         const operationKey = `${date}_${ruleId}`;
 
         // 防止重複操作
@@ -220,7 +298,7 @@ export default function RosterPage() {
                 return next;
             });
         }
-    }, [roster, currentMonth, user, autoFillEnabled, shiftRules, users, unavailabilityMap, updateLocalRoster, showToast, pendingOperations]);
+    }, [roster, currentMonth, user, autoFillEnabled, shiftRules, users, unavailabilityMap, updateLocalRoster, showToast, pendingOperations, monthModel]);
 
     // 清除單一時段指派
     const handleClearAssignment = async (date, ruleId) => {
@@ -322,28 +400,67 @@ export default function RosterPage() {
         });
     };
 
-    // 渲染日期標題區域（清除當日按鈕）
+    // 渲染日期標題區域（清除當日按鈕 + 閉館按鈕）
     const renderDayHeader = (day) => {
         const hasAssignments = hasDayAssignments(day.date, day.shifts);
-
-        if (!hasAssignments) return null;
+        const isClosed = isClosedDay(day.date);
+        const isToggling = pendingOperations.has(`closed_${day.date}`);
 
         return (
-            <button
-                className="btn btn-ghost btn-xs text-error hover:bg-error/20 p-0 min-h-0 h-5 w-5"
-                onClick={() => handleClearDayAssignments(day.date, day.shifts)}
-                title="清除當日所有排班"
-            >
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-            </button>
+            <div className="flex items-center gap-0.5">
+                {/* 清除當日排班按鈕 - 移到左邊 */}
+                {hasAssignments && !isClosed && (
+                    <button
+                        className="btn btn-ghost btn-xs text-error hover:bg-error/20 p-0 min-h-0 h-5 w-5 flex items-center justify-center"
+                        onClick={() => handleClearDayAssignments(day.date, day.shifts)}
+                        title="清除當日所有排班"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                    </button>
+                )}
+
+                {/* 閉館切換按鈕 */}
+                <button
+                    className={`btn btn-ghost btn-xs p-0 min-h-0 h-5 w-5 flex items-center justify-center ${isClosed ? 'text-success' : 'text-base-content/50 hover:text-error'}`}
+                    onClick={() => handleClosedDayToggle(day.date)}
+                    title={isClosed ? '取消休館' : '設為休館日'}
+                    disabled={isToggling}
+                >
+                    {isToggling ? (
+                        <span className="loading loading-spinner loading-xs"></span>
+                    ) : isClosed ? (
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2" stroke="currentColor" className="w-3.5 h-3.5">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                        </svg>
+                    ) : (
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                        </svg>
+                    )}
+                </button>
+            </div>
         );
     };
 
     // 渲染班段內容 - 使用下拉選單
     // dayIndex: 0=週日, 1=週一, ... 6=週六（用於判斷是否在畫面左側）
     const renderDayContent = (day, weekIndex, totalWeeks, dayIndex = 0) => {
+        const isClosed = isClosedDay(day.date);
+
+        // 如果是閉館日，顯示閉館提示
+        if (isClosed) {
+            return (
+                <div className="flex items-center justify-center p-3 bg-base-300/50 rounded-btn text-base-content/50">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4 mr-1">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                    </svg>
+                    <span className="text-sm font-medium">休館日</span>
+                </div>
+            );
+        }
+
         // 判斷是否在最後兩週，需要向上展開選單
         const isNearBottom = weekIndex >= totalWeeks - 2;
         // 判斷是否在畫面左側（週日或週一），需要向右展開選單而非向左
@@ -525,9 +642,14 @@ export default function RosterPage() {
                 <div className="card bg-base-100 shadow-lg mb-20">
                     <div className="card-body p-4">
                         {isMobile ? (
-                            <MobileCalendar monthModel={monthModel} renderDayContent={renderDayContent} renderDayHeader={renderDayHeader} />
+                            <MobileCalendar
+                                monthModel={monthModel}
+                                renderDayContent={renderDayContent}
+                                renderDayHeader={renderDayHeader}
+                                disabledDates={closedDays}
+                            />
                         ) : (
-                            <Calendar monthModel={monthModel} renderDayContent={renderDayContent} renderDayHeader={renderDayHeader} />
+                            <Calendar monthModel={monthModel} renderDayContent={renderDayContent} renderDayHeader={renderDayHeader} disabledDates={closedDays} />
                         )}
                     </div>
                 </div>
@@ -539,6 +661,15 @@ export default function RosterPage() {
                     <div className="card-body p-4">
                         {/* 側邊欄 Tab */}
                         <div className="tabs tabs-boxed mb-4">
+                            <button
+                                className={`tab ${activeSidebar === 'unconfirmed' ? 'tab-active' : ''}`}
+                                onClick={() => setActiveSidebar('unconfirmed')}
+                            >
+                                未確認
+                                {unconfirmedUsers.length > 0 && (
+                                    <span className="badge badge-primary badge-xs ml-1">{unconfirmedUsers.length}</span>
+                                )}
+                            </button>
                             <button
                                 className={`tab ${activeSidebar === 'requests' ? 'tab-active' : ''}`}
                                 onClick={() => setActiveSidebar('requests')}
@@ -556,17 +687,19 @@ export default function RosterPage() {
                         {/* 特殊需求列表 */}
                         {activeSidebar === 'requests' && (
                             <div className="space-y-2 max-h-96 overflow-y-auto">
-                                {specialRequests.length === 0 ? (
+                                {specialRequests.filter(r => r.text && r.text.trim()).length === 0 ? (
                                     <p className="text-base-content/50 text-center py-4">本月無特殊需求</p>
                                 ) : (
-                                    specialRequests.map((r) => (
-                                        <div key={r.userId} className="bg-base-200 rounded-box p-3">
-                                            <div className="font-medium text-sm">{r.name}</div>
-                                            <div className="text-xs text-base-content/70 whitespace-pre-wrap">
-                                                {r.text || '（無內容）'}
+                                    specialRequests
+                                        .filter(r => r.text && r.text.trim())
+                                        .map((r) => (
+                                            <div key={r.userId} className="bg-base-200 rounded-box p-3">
+                                                <div className="font-medium text-sm">{r.name}</div>
+                                                <div className="text-xs text-base-content/70 whitespace-pre-wrap">
+                                                    {r.text}
+                                                </div>
                                             </div>
-                                        </div>
-                                    ))
+                                        ))
                                 )}
                             </div>
                         )}
@@ -596,10 +729,55 @@ export default function RosterPage() {
                                 )}
                             </div>
                         )}
+
+                        {/* 未確認使用者列表 */}
+                        {activeSidebar === 'unconfirmed' && (
+                            <div className="space-y-2 max-h-96 overflow-y-auto">
+                                {unconfirmedUsers.length === 0 ? (
+                                    <div className="text-center py-4">
+                                        <div className="w-16 h-16 mx-auto mb-3 rounded-full bg-success/10 flex items-center justify-center text-success">
+                                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-8 h-8">
+                                                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                            </svg>
+                                        </div>
+                                        <p className="text-success font-medium">所有使用者都已確認填寫</p>
+                                        <p className="text-base-content/50 text-sm mt-1">可以開始排班了！</p>
+                                    </div>
+                                ) : (
+                                    <>
+                                        <div className="alert alert-info bg-primary/99 border-primary/20 text-primary-content text-sm py-2 mb-3">
+                                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
+                                                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+                                            </svg>
+                                            <span>以下使用者尚未確認填寫，不會出現在排班選單中</span>
+                                        </div>
+                                        {unconfirmedUsers.map((u) => {
+                                            const uColor = userColorMap[u.email];
+                                            return (
+                                                <div
+                                                    key={u.email}
+                                                    className="flex items-center gap-3 bg-base-200 rounded-box p-3 border-l-4 opacity-60"
+                                                    style={{ borderLeftColor: uColor?.text || 'transparent' }}
+                                                >
+                                                    <div className="w-8 h-8 rounded-full bg-base-300 flex items-center justify-center">
+                                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4 text-base-content/50">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+                                                        </svg>
+                                                    </div>
+                                                    <div className="flex-1">
+                                                        <div className="font-medium text-sm">{u.name}</div>
+                                                        <div className="text-xs text-base-content/50">尚未確認填寫</div>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </>
+                                )}
+                            </div>
+                        )}
                     </div>
                 </div>
             </aside>
         </div>
     );
 }
-

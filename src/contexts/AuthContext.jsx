@@ -2,9 +2,10 @@ import { createContext, useContext, useState, useEffect } from 'react';
 import {
     onAuthStateChanged,
     signInWithPopup,
-    signOut as firebaseSignOut
+    signOut as firebaseSignOut,
+    deleteUser as firebaseDeleteUser
 } from 'firebase/auth';
-import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, setDoc, deleteDoc, serverTimestamp, collection, query, where, getDocs } from 'firebase/firestore';
 import { auth, googleProvider, db } from '../lib/firebase';
 
 const AuthContext = createContext(null);
@@ -93,6 +94,64 @@ export function AuthProvider({ children }) {
         }
     };
 
+    // 檢查暱稱是否已被其他使用者使用
+    const checkNameExists = async (name) => {
+        try {
+            const usersRef = collection(db, 'users');
+            const q = query(usersRef, where('name', '==', name), where('active', '==', true));
+            const snapshot = await getDocs(q);
+
+            if (snapshot.empty) {
+                return { exists: false };
+            }
+
+            // 檢查是否是同一個使用者（排除自己）
+            const currentEmail = user?.email;
+            const matchedUser = snapshot.docs.find(doc => doc.id !== currentEmail);
+            if (matchedUser) {
+                // 隱藏部分 email 以保護隱私
+                const email = matchedUser.id;
+                const maskedEmail = email.substring(0, 3) + '***' + email.substring(email.indexOf('@'));
+                return { exists: true, email: maskedEmail, fullEmail: email };
+            }
+
+            return { exists: false };
+        } catch (error) {
+            console.error('Error checking name exists:', error);
+            throw error;
+        }
+    };
+
+    // 刪除當前使用者帳號並登出（用於暱稱重複時）
+    const deleteCurrentUserAndSignOut = async () => {
+        if (!user) return;
+
+        try {
+            // 1. 刪除 Firestore 中的使用者資料
+            const userRef = doc(db, 'users', user.email);
+            await deleteDoc(userRef);
+
+            // 2. 刪除 Firebase Auth 帳號
+            await firebaseDeleteUser(user);
+
+            // 3. 重置狀態
+            setUser(null);
+            setUserProfile(null);
+            setNeedsNameSetup(false);
+        } catch (error) {
+            console.error('Error deleting user:', error);
+            // 如果刪除 Auth 帳號失敗（可能需要重新登入），至少登出
+            try {
+                await firebaseSignOut(auth);
+                setUser(null);
+                setUserProfile(null);
+            } catch (signOutError) {
+                console.error('Error signing out after failed delete:', signOutError);
+            }
+            throw error;
+        }
+    };
+
     // 檢查是否為班長或管理員
     const isLeader = userProfile?.role === 'leader' || userProfile?.role === 'admin';
     const isAdmin = userProfile?.role === 'admin';
@@ -108,6 +167,8 @@ export function AuthProvider({ children }) {
         signOut,
         setupUserName,
         loadUserProfile,
+        checkNameExists,
+        deleteCurrentUserAndSignOut,
     };
 
     return (

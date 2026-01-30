@@ -11,7 +11,10 @@ import {
     getMyUnavailability,
     getMySpecialRequest,
     saveMyUnavailability,
-    saveSpecialRequest
+    saveSpecialRequest,
+    getAvailabilityConfirmation,
+    setAvailabilityConfirmation,
+    getClosedDays,
 } from '../services/firestore';
 
 export default function AvailabilityPage() {
@@ -30,6 +33,13 @@ export default function AvailabilityPage() {
     const [saveStatus, setSaveStatus] = useState('saved'); // 'saved' | 'dirty' | 'saving' | 'error'
     const [showClearConfirm, setShowClearConfirm] = useState(false);
 
+    // 確認填寫完成狀態
+    const [isConfirmed, setIsConfirmed] = useState(false);
+    const [confirmLoading, setConfirmLoading] = useState(false);
+
+    // 閉館日
+    const [closedDays, setClosedDays] = useState([]);
+
     // 預設為下個月
     function getDefaultMonth() {
         const now = new Date();
@@ -45,17 +55,22 @@ export default function AvailabilityPage() {
         if (!user) return;
         setLoading(true);
         try {
-            const rules = await getShiftRules();
-            setShiftRules(rules);
+            const [rules, unavail, request, confirmation, closed] = await Promise.all([
+                getShiftRules(),
+                getMyUnavailability(user.email, currentMonth),
+                getMySpecialRequest(user.email, currentMonth),
+                getAvailabilityConfirmation(user.email, currentMonth),
+                getClosedDays(currentMonth),
+            ]);
 
+            setShiftRules(rules);
             const model = getMonthModel(currentMonth, rules);
             setMonthModel(model);
 
-            const unavail = await getMyUnavailability(user.email, currentMonth);
             setUnavailability(unavail);
-
-            const request = await getMySpecialRequest(user.email, currentMonth);
             setSpecialRequest(request);
+            setIsConfirmed(confirmation.confirmed || false);
+            setClosedDays(closed);
 
             setLastSavedState({ unavail, request });
             setSaveStatus('saved');
@@ -91,7 +106,15 @@ export default function AvailabilityPage() {
         return () => clearTimeout(timer);
     }, [saveStatus, unavailability, specialRequest]);
 
+    // 檢查日期是否為閉館日
+    const isClosedDay = (date) => {
+        return closedDays.some(d => d.date === date);
+    };
+
     const handleCheckboxChange = (date, ruleId, checked) => {
+        // 如果是閉館日，不允許修改
+        if (isClosedDay(date)) return;
+
         if (checked) {
             setUnavailability([...unavailability, { date, ruleId }]);
         } else {
@@ -99,11 +122,21 @@ export default function AvailabilityPage() {
                 u => !(u.date === date && u.ruleId === ruleId)
             ));
         }
+
+        // 有任何修改時，取消確認狀態
+        if (isConfirmed) {
+            setIsConfirmed(false);
+            // 同時更新資料庫
+            setAvailabilityConfirmation(user.email, currentMonth, false).catch(console.error);
+        }
     };
 
     // 點擊時段自動勾選（點擊的時段及之後的時段都會被選取）
     // 但如果當日已有任何選取，就不啟用自動補齊（代表使用者想個別操作）
     const handleShiftClick = (day, shift, shiftIndex, isChecked) => {
+        // 如果是閉館日，不允許操作
+        if (isClosedDay(day.date)) return;
+
         if (!autoFillEnabled) {
             handleCheckboxChange(day.date, shift.ruleId, isChecked);
             return;
@@ -130,6 +163,12 @@ export default function AvailabilityPage() {
                 }
             });
             setUnavailability(newUnavail);
+
+            // 有任何修改時，取消確認狀態
+            if (isConfirmed) {
+                setIsConfirmed(false);
+                setAvailabilityConfirmation(user.email, currentMonth, false).catch(console.error);
+            }
         } else {
             // 只取消勾選當前時段
             handleCheckboxChange(day.date, shift.ruleId, isChecked);
@@ -148,6 +187,12 @@ export default function AvailabilityPage() {
         setUnavailability([]);
         setShowClearConfirm(false);
         showToast('已清空所有選擇', 'info');
+
+        // 取消確認狀態
+        if (isConfirmed) {
+            setIsConfirmed(false);
+            setAvailabilityConfirmation(user.email, currentMonth, false).catch(console.error);
+        }
     };
 
     const handleSave = async (isAuto = false) => {
@@ -181,11 +226,53 @@ export default function AvailabilityPage() {
         setSaving(false);
     };
 
+    // 處理確認填寫完成
+    const handleConfirmToggle = async () => {
+        setConfirmLoading(true);
+        try {
+            // 先儲存所有資料
+            if (saveStatus === 'dirty') {
+                await saveMyUnavailability(user.email, currentMonth, unavailability);
+                await saveSpecialRequest(user.email, currentMonth, specialRequest);
+                setLastSavedState({ unavail: [...unavailability], request: specialRequest });
+                setSaveStatus('saved');
+            }
+
+            const newConfirmState = !isConfirmed;
+            await setAvailabilityConfirmation(user.email, currentMonth, newConfirmState);
+            setIsConfirmed(newConfirmState);
+
+            if (newConfirmState) {
+                showToast('已確認填寫完成，您的資料將用於排班', 'success');
+            } else {
+                showToast('已取消確認，您可以繼續修改', 'info');
+            }
+        } catch (error) {
+            console.error('Error updating confirmation:', error);
+            showToast('更新確認狀態失敗', 'error');
+        }
+        setConfirmLoading(false);
+    };
+
     const isUnavailable = (date, ruleId) => {
         return unavailability.some(u => u.date === date && u.ruleId === ruleId);
     };
 
     const renderDayContent = (day, weekIndex, totalWeeks) => {
+        const isClosed = isClosedDay(day.date);
+
+        // 如果是閉館日，顯示閉館提示
+        if (isClosed) {
+            return (
+                <div className="flex items-center justify-center p-3 bg-base-300/50 rounded-btn text-base-content/50">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4 mr-1">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                    </svg>
+                    <span className="text-sm font-medium">休館日</span>
+                </div>
+            );
+        }
+
         return day.shifts.map((shift, index) => {
             const checked = isUnavailable(day.date, shift.ruleId);
             return (
@@ -269,11 +356,14 @@ export default function AvailabilityPage() {
                         <MobileCalendar
                             monthModel={monthModel}
                             renderDayContent={renderDayContent}
+                            defaultExpanded={true}  // 手機版預設展開
+                            disabledDates={closedDays}
                         />
                     ) : (
                         <Calendar
                             monthModel={monthModel}
                             renderDayContent={renderDayContent}
+                            disabledDates={closedDays}
                         />
                     )}
                 </div>
@@ -288,62 +378,95 @@ export default function AvailabilityPage() {
                         placeholder="例如：希望連續時段、偏好週末、每週最多幾班..."
                         rows={3}
                         value={specialRequest}
-                        onChange={(e) => setSpecialRequest(e.target.value)}
+                        onChange={(e) => {
+                            setSpecialRequest(e.target.value);
+                            // 有修改時取消確認狀態
+                            if (isConfirmed) {
+                                setIsConfirmed(false);
+                                setAvailabilityConfirmation(user.email, currentMonth, false).catch(console.error);
+                            }
+                        }}
                     />
                 </div>
             </div>
 
-            {/* 操作按鈕與自動儲存狀態 */}
-            <div className="flex items-center justify-between gap-1.5 bg-base-100 p-2.5 rounded-box shadow-lg sticky bottom-4 z-10 border border-base-200">
-                <div className="flex items-center gap-1 min-w-0 flex-shrink">
-                    {saveStatus === 'saving' && (
-                        <div className="flex items-center gap-1 text-primary text-xs font-medium whitespace-nowrap">
-                            <span className="loading loading-spinner loading-xs"></span>
-                            <span className="hidden sm:inline">自動儲存中...</span>
-                            <span className="sm:hidden">儲存中</span>
+            {/* 確認填寫完成 */}
+            <div className={`card shadow-lg mb-25 ${isConfirmed ? 'bg-success/10 border-2 border-success' : 'bg-base-100'}`}>
+                <div className="card-body p-4">
+                    <div className="flex items-center justify-between flex-wrap gap-4">
+                        <div className="flex items-center gap-3">
+                            <div className={`w-12 h-12 rounded-full flex items-center justify-center ${isConfirmed ? 'bg-success text-white' : 'bg-base-200'}`}>
+                                {isConfirmed ? (
+                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6">
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                    </svg>
+                                ) : (
+                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+                                    </svg>
+                                )}
+                            </div>
+                            <div>
+                                <h3 className="font-bold text-lg">
+                                    {isConfirmed ? '已確認填寫完成' : '尚未確認填寫'}
+                                </h3>
+                                <p className="text-sm text-base-content/70">
+                                    {isConfirmed
+                                        ? '您的資料將用於管理員排班'
+                                        : '確認後管理員才能使用您的資料進行排班'}
+                                </p>
+                            </div>
                         </div>
-                    )}
-                    {saveStatus === 'dirty' && (
-                        <div className="text-warning text-xs font-medium flex items-center gap-0.5 whitespace-nowrap">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5 sm:w-4 sm:h-4 animate-spin-slow flex-shrink-0">
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
-                            </svg>
-                            <span className="hidden sm:inline">3秒後自動儲存</span>
-                            <span className="sm:hidden">待儲存</span>
-                        </div>
-                    )}
-                    {saveStatus === 'saved' && (
-                        <div className="text-success text-xs font-medium flex items-center gap-0.5 whitespace-nowrap">
-                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5 flex-shrink-0">
-                                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.857-9.809a.75.75 0 00-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 10-1.06 1.061l2.5 2.5a.75.75 0 001.137-.089l4-5.5z" clipRule="evenodd" />
-                            </svg>
-                            <span className="hidden sm:inline">已儲存</span>
-                            <span className="sm:hidden">已儲存</span>
-                        </div>
-                    )}
-                    {saveStatus === 'error' && (
-                        <div className="text-error text-xs font-medium whitespace-nowrap">
-                            <span className="hidden sm:inline">儲存失敗，請檢查網路</span>
-                            <span className="sm:hidden">失敗</span>
-                        </div>
-                    )}
+                        <button
+                            className={`btn ${isConfirmed ? 'btn-warning' : 'btn-info'} ${confirmLoading ? 'loading' : ''}`}
+                            onClick={handleConfirmToggle}
+                            disabled={confirmLoading}
+                        >
+                            {confirmLoading ? '' : isConfirmed ? '取消確認' : '確認填寫完成'}
+                        </button>
+                    </div>
                 </div>
+            </div>
 
-                <div className="flex gap-1.5 flex-shrink-0">
-                    <button
-                        className="btn btn-ghost btn-sm"
-                        onClick={handleClearAll}
-                    >
-                        清空全部
-                    </button>
-                    <button
-                        className={`btn btn-primary btn-sm px-3 ${saving ? 'loading' : ''}`}
-                        onClick={() => handleSave(false)}
-                        disabled={saving}
-                    >
-                        {!saving && '立即儲存'}
-                    </button>
-                </div>
+            {/* 清除全部按鈕 - 浮動在左下角 */}
+            <div className="fixed bottom-0 left-6 z-40">
+                <button
+                    className="btn btn-circle btn-lg btn-error shadow-xl hover:scale-110 active:scale-95 transition-all duration-300 group"
+                    onClick={handleClearAll}
+                    title="清空全部"
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6 group-hover:rotate-12 transition-transform">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+                    </svg>
+                </button>
+            </div>
+
+            {/* 確認填寫按鈕 - 浮動在右下角 */}
+            <div className="fixed bottom-6 right-6 z-40">
+                <button
+                    className={`btn btn-circle btn-lg shadow-xl hover:scale-110 active:scale-95 transition-all duration-300 ${isConfirmed ? 'btn-success text-white' : 'btn-info'}`}
+                    onClick={handleConfirmToggle}
+                    disabled={confirmLoading}
+                    title={isConfirmed ? '取消確認' : '確認填寫完成'}
+                >
+                    {confirmLoading ? (
+                        <span className="loading loading-spinner"></span>
+                    ) : isConfirmed ? (
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-8 h-8">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                    ) : (
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M15.59 14.37a6 6 0 0 1-5.84 7.38v-4.8m5.84-2.58a14.98 14.98 0 0 0 6.16-12.12A14.98 14.98 0 0 0 9.631 8.41m5.96 5.96a14.926 14.926 0 0 1-5.841 2.58m-.119-8.54a6 6 0 0 0-7.381 5.84h4.8m2.581-5.84a14.927 14.927 0 0 0-2.58 5.84m2.699 2.7c-.103.021-.207.041-.311.06a15.09 15.09 0 0 1-2.448-2.448 14.9 14.9 0 0 1 .06-.312m-2.24 2.39a4.493 4.493 0 0 0-1.757 4.306 4.493 4.493 0 0 0 4.306-1.758M16.5 9a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Z" />
+                        </svg>
+                    )}
+                </button>
+                {/* 狀態氣泡提示 */}
+                {!isConfirmed && saveStatus === 'dirty' && (
+                    <div className="absolute -top-12 right-0 bg-info text-info-content text-xs font-bold px-3 py-1.5 rounded-full shadow-lg whitespace-nowrap animate-bounce">
+                        完成填寫按我
+                    </div>
+                )}
             </div>
 
             {/* 清除全部確認視窗 */}
@@ -386,4 +509,3 @@ export default function AvailabilityPage() {
         </div>
     );
 }
-

@@ -1,12 +1,46 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 
 export default function LoginPage() {
-    const { signInWithGoogle, needsNameSetup, setupUserName, user } = useAuth();
+    const { signInWithGoogle, signOut, needsNameSetup, setupUserName, user, checkNameExists, deleteCurrentUserAndSignOut } = useAuth();
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [name, setName] = useState('');
     const [settingUpName, setSettingUpName] = useState(false);
+
+    // 暱稱重複檢查相關狀態
+    const [checkingName, setCheckingName] = useState(false);
+    const [nameExists, setNameExists] = useState(false);
+    const [existingEmail, setExistingEmail] = useState('');
+    const [showDuplicateModal, setShowDuplicateModal] = useState(false);
+    const [deletingAccount, setDeletingAccount] = useState(false);
+
+    // 當使用者輸入名稱時，進行即時檢查（防抖）
+    useEffect(() => {
+        if (!name.trim()) {
+            setNameExists(false);
+            setExistingEmail('');
+            return;
+        }
+
+        const timer = setTimeout(async () => {
+            setCheckingName(true);
+            try {
+                const result = await checkNameExists(name.trim());
+                setNameExists(result.exists);
+                if (result.exists) {
+                    setExistingEmail(result.email);
+                } else {
+                    setExistingEmail('');
+                }
+            } catch (err) {
+                console.error('Error checking name:', err);
+            }
+            setCheckingName(false);
+        }, 500);
+
+        return () => clearTimeout(timer);
+    }, [name, checkNameExists]);
 
     const handleGoogleSignIn = async () => {
         setLoading(true);
@@ -26,15 +60,41 @@ export default function LoginPage() {
             setError('請輸入您的名稱');
             return;
         }
+
+        // 再次檢查暱稱是否重複
         setSettingUpName(true);
         setError('');
+
         try {
+            const result = await checkNameExists(name.trim());
+            if (result.exists) {
+                setNameExists(true);
+                setExistingEmail(result.email);
+                setShowDuplicateModal(true);
+                setSettingUpName(false);
+                return;
+            }
+
             await setupUserName(name.trim());
         } catch (err) {
             setError('設定名稱失敗，請稍後再試');
             console.error(err);
         }
         setSettingUpName(false);
+    };
+
+    // 處理重複暱稱的確認（刪除帳號並登出）
+    const handleDuplicateConfirm = async () => {
+        setDeletingAccount(true);
+        try {
+            await deleteCurrentUserAndSignOut();
+            setShowDuplicateModal(false);
+            // 登出後會自動跳轉到登入頁面
+        } catch (err) {
+            console.error('Error deleting account:', err);
+            setError('清除帳號失敗，請稍後再試');
+        }
+        setDeletingAccount(false);
     };
 
     // 如果需要設定名稱
@@ -55,17 +115,37 @@ export default function LoginPage() {
 
                         <form onSubmit={handleNameSubmit} className="space-y-4">
                             <div className="form-control">
-                                <label className="label">
-                                    <span className="label-text">您的名稱</span>
-                                </label>
-                                <input
-                                    type="text"
-                                    className="input input-bordered w-full"
-                                    placeholder="例如：王小明"
-                                    value={name}
-                                    onChange={(e) => setName(e.target.value)}
-                                    autoFocus
-                                />
+
+                                <div className="relative group">
+                                    <input
+                                        type="text"
+                                        className={`input input-bordered w-full transition-all duration-200 pr-12 ${nameExists ? 'input-error bg-error/5' : 'focus:input-primary'}`}
+                                        placeholder="例如：王小明"
+                                        value={name}
+                                        onChange={(e) => setName(e.target.value)}
+                                        autoFocus
+                                    />
+                                    <div className="absolute inset-y-0 right-0 flex items-center pr-4 pointer-events-none">
+                                        {checkingName ? (
+                                            <span className="loading loading-spinner loading-sm text-primary"></span>
+                                        ) : name.trim() && !nameExists ? (
+                                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5 text-success">
+                                                <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                                            </svg>
+                                        ) : nameExists ? (
+                                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5 text-error">
+                                                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                                            </svg>
+                                        ) : null}
+                                    </div>
+                                </div>
+                                {nameExists && (
+                                    <label className="label px-1 py-2">
+                                        <span className="label-text-alt text-error/80">
+                                            此名稱由 {existingEmail} 使用中
+                                        </span>
+                                    </label>
+                                )}
                             </div>
 
                             {error && (
@@ -76,14 +156,83 @@ export default function LoginPage() {
 
                             <button
                                 type="submit"
-                                className={`btn btn-primary w-full ${settingUpName ? 'loading' : ''}`}
-                                disabled={settingUpName}
+                                className="btn btn-primary w-full"
+                                disabled={settingUpName || nameExists || checkingName || !name.trim()}
                             >
-                                {settingUpName ? '設定中...' : '開始使用'}
+                                {settingUpName ? (
+                                    <>
+                                        <span className="loading loading-spinner"></span>
+                                        設定中...
+                                    </>
+                                ) : (
+                                    '開始使用'
+                                )}
                             </button>
                         </form>
+
+                        <div className="divider text-xs text-base-content/30">或者</div>
+
+                        <button
+                            className="btn btn-ghost btn-sm w-full text-base-content/50"
+                            onClick={() => signOut()}
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4 mr-2">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H9" />
+                            </svg>
+                            登出並更換帳號
+                        </button>
                     </div>
                 </div>
+
+                {/* 暱稱重複確認彈窗 */}
+                {showDuplicateModal && (
+                    <div className="modal modal-open">
+                        <div className="modal-box max-w-sm">
+                            <div className="flex flex-col items-center text-center space-y-4">
+                                <div className="w-16 h-16 rounded-full bg-warning/10 flex items-center justify-center text-warning">
+                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-8 h-8">
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+                                    </svg>
+                                </div>
+                                <div className="space-y-2">
+                                    <h3 className="text-xl font-bold">此名稱已被使用</h3>
+                                    <p className="text-base-content/70">
+                                        「{name}」這個名稱已經被 <strong className="text-primary">{existingEmail}</strong> 使用。
+                                    </p>
+                                    <p className="text-sm text-base-content/50">
+                                        如果您已經有過帳號，請切換至正確的 Google 帳號登入。否則請嘗試使用不同的顯示名稱。
+                                    </p>
+                                </div>
+                                <div className="flex flex-col gap-2 w-full pt-2">
+                                    <button
+                                        className="btn btn-primary w-full"
+                                        onClick={handleDuplicateConfirm}
+                                        disabled={deletingAccount}
+                                    >
+                                        {deletingAccount ? (
+                                            <>
+                                                <span className="loading loading-spinner"></span>
+                                                處理中...
+                                            </>
+                                        ) : (
+                                            '登出並尋找原帳號'
+                                        )}
+                                    </button>
+                                    <button
+                                        className="btn btn-ghost w-full"
+                                        onClick={() => setShowDuplicateModal(false)}
+                                        disabled={deletingAccount}
+                                    >
+                                        更換名稱
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="modal-backdrop bg-black/40" onClick={() => setShowDuplicateModal(false)}>
+                            <button className="cursor-default">close</button>
+                        </div>
+                    </div>
+                )}
             </div>
         );
     }
