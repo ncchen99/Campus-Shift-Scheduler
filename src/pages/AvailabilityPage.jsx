@@ -358,12 +358,14 @@ export default function AvailabilityPage() {
                             renderDayContent={renderDayContent}
                             defaultExpanded={true}  // 手機版預設展開
                             disabledDates={closedDays}
+                            showDayName={true}  // 顯示星期幾，幫助使用者確認日期
                         />
                     ) : (
                         <Calendar
                             monthModel={monthModel}
                             renderDayContent={renderDayContent}
                             disabledDates={closedDays}
+                            showDayName={true}  // 顯示星期幾，幫助使用者確認日期
                         />
                     )}
                 </div>

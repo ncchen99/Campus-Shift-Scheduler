@@ -6,6 +6,7 @@ export default function Calendar({
     renderDayHeader,  // 可選：自訂日期標題區域（傳入 day 物件）
     className = '',
     disabledDates = [],  // 新增：閉館日列表
+    showDayName = false,  // 新增：是否顯示星期幾
 }) {
     if (!monthModel || !monthModel.days.length) {
         return (
@@ -68,10 +69,24 @@ export default function Calendar({
                 `}
                             >
                                 {/* 日期標題 */}
-                                <div className="flex items-center gap-1 mb-2 pb-1 border-b border-base-300">
+                                <div className="flex items-center justify-between mb-2 pb-1 border-b border-base-300">
                                     <span className={`font-bold ${isClosed ? 'text-base-content/30 opacity-50' : ''}`}>{dateNum}日</span>
-                                    {/* 自訂日期標題區域（如清除按鈕） */}
-                                    {renderDayHeader && renderDayHeader(day)}
+                                    {/* 如果有按鈕，星期幾在左側；如果沒有按鈕，星期幾靠右 */}
+                                    {showDayName && !renderDayHeader && (
+                                        <span className={`text-xs ${isClosed ? 'text-base-content/30 opacity-50' : day.isWeekend ? 'text-error' : 'text-base-content/60'}`}>
+                                            週{day.dayName}
+                                        </span>
+                                    )}
+                                    {showDayName && renderDayHeader && (
+                                        <div className="flex items-center gap-2">
+                                            <span className={`text-xs ${isClosed ? 'text-base-content/30 opacity-50' : day.isWeekend ? 'text-error' : 'text-base-content/60'}`}>
+                                                週{day.dayName}
+                                            </span>
+                                            {renderDayHeader(day)}
+                                        </div>
+                                    )}
+                                    {/* 只有按鈕，沒有星期幾 */}
+                                    {!showDayName && renderDayHeader && renderDayHeader(day)}
                                 </div>
 
                                 {/* 班段內容 - 由父組件提供，傳入 dayIndex 用於判斷位置 */}

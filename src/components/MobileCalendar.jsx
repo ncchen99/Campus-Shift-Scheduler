@@ -7,6 +7,7 @@ export default function MobileCalendar({
     className = '',
     defaultExpanded = false,  // 新增：是否預設展開所有卡片
     disabledDates = [],  // 新增：閉館日列表
+    showDayName = false,  // 新增：是否顯示星期幾
 }) {
     const [expandedDates, setExpandedDates] = useState(new Set());
 
@@ -85,15 +86,22 @@ export default function MobileCalendar({
                                     `}>
                                         {dateNum}
                                     </span>
-                                    {!isClosed && (
-                                        <span className="text-xs text-base-content/50">
-                                            {day.shifts.length} 個時段
-                                        </span>
-                                    )}
+                                    <div className="flex flex-col">
+                                        {showDayName && (
+                                            <span className={`text-sm ${isClosed ? 'text-base-content/50' : day.isWeekend ? 'text-warning' : 'text-base-content/60'}`}>
+                                                週{day.dayName}
+                                            </span>
+                                        )}
+                                        {!isClosed && (
+                                            <span className="text-xs text-base-content/50">
+                                                {day.shifts.length} 個時段
+                                            </span>
+                                        )}
+                                    </div>
                                 </div>
                                 {!isClosed && (
                                     <svg
-                                        className={`w-5 h-5 text-base-content/50 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                                        className={`w-5 h-5 text-base-content/50 transition-transform ml-auto ${isExpanded ? 'rotate-180' : ''}`}
                                         fill="none"
                                         viewBox="0 0 24 24"
                                         stroke="currentColor"
@@ -102,7 +110,7 @@ export default function MobileCalendar({
                                     </svg>
                                 )}
                             </button>
-                            {/* 自訂日期區域額外內容（如清除按鈕） */}
+                            {/* 自訂日期區域額外內容（如清除按鈕） - 靠右顯示 */}
                             {renderDayHeader && (
                                 <div className="ml-2 flex-shrink-0">
                                     {renderDayHeader(day)}
