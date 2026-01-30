@@ -85,16 +85,11 @@ export default function MobileCalendar({
                                     `}>
                                         {dateNum}
                                     </span>
-                                    <div className={`flex flex-col ${isClosed ? 'opacity-50' : ''}`}>
-                                        <span className={`text-sm ${isClosed ? 'text-base-content/50' : day.isWeekend ? 'text-warning' : 'text-base-content/60'}`}>
-                                            週{day.dayName}
+                                    {!isClosed && (
+                                        <span className="text-xs text-base-content/50">
+                                            {day.shifts.length} 個時段
                                         </span>
-                                        {isClosed ? null : (
-                                            <span className="text-xs text-base-content/50">
-                                                {day.shifts.length} 個時段
-                                            </span>
-                                        )}
-                                    </div>
+                                    )}
                                 </div>
                                 {!isClosed && (
                                     <svg

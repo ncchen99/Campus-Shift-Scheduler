@@ -195,12 +195,10 @@ export default function RosterPage() {
                 setClosedDays(prev => prev.filter(d => d.date !== date));
                 showToast(`已取消 ${date} 的休館設定`, 'info');
             } else {
-                // 設定閉館
-                await setClosedDay(currentMonth, date, user.email);
-                setClosedDays(prev => [...prev, { date, closedBy: user.email }]);
-
-                // 同時清除該天的所有排班
+                // 設定閉館：先清除該天的所有排班，再設定閉館日
                 const dayShifts = monthModel?.days.find(d => d.date === date)?.shifts || [];
+
+                // 1. 先清除 Firebase 中該天的所有排班資料
                 for (const shift of dayShifts) {
                     const hasAssignment = roster.some(r => r.date === date && r.ruleId === shift.ruleId);
                     if (hasAssignment) {
@@ -208,10 +206,19 @@ export default function RosterPage() {
                     }
                 }
 
-                // 更新本地 roster 狀態
-                setRoster(prev => prev.filter(r => r.date !== date));
+                // 2. 更新本地 roster 狀態（清除該天的排班）
+                const updatedRoster = roster.filter(r => r.date !== date);
+                setRoster(updatedRoster);
 
-                showToast(`已設定 ${date} 為休館日`, 'success');
+                // 3. 最後才設定閉館日
+                await setClosedDay(currentMonth, date, user.email);
+                setClosedDays(prev => [...prev, { date, closedBy: user.email }]);
+
+                // 4. 更新工時統計
+                const workloadData = getMonthlyWorkload(currentMonth, updatedRoster, shiftRules, users);
+                setWorkload(workloadData);
+
+                showToast(`已設定 ${date} 為休館日並清除所有排班`, 'success');
             }
         } catch (error) {
             console.error('Error toggling closed day:', error);
