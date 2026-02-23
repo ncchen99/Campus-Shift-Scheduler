@@ -328,7 +328,7 @@ export default function AvailabilityPage() {
             <div className="text-center space-y-2">
                 <h2 className="text-2xl font-bold mb-2">填寫沒空時間</h2>
                 <p className="text-base-content/70">
-                    請勾選您<strong className="text-error">無法上班</strong>的時段
+                    請選取您<strong className="text-error">無法上班</strong>的時段
                 </p>
                 <div className="flex justify-center">
                     <label className="label cursor-pointer gap-4 bg-base-200 px-4 py-2 rounded-full border border-base-300 shadow-sm">
@@ -420,7 +420,7 @@ export default function AvailabilityPage() {
                             </div>
                         </div>
                         <button
-                            className={`btn ${isConfirmed ? 'btn-warning' : 'btn-info'} ${confirmLoading ? 'loading' : ''}`}
+                            className={`btn ${isConfirmed ? 'btn-error' : 'btn-info'} ${confirmLoading ? 'loading' : ''}`}
                             onClick={handleConfirmToggle}
                             disabled={confirmLoading}
                         >
