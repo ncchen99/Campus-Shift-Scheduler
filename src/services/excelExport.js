@@ -65,7 +65,7 @@ export async function exportRosterToExcel(monthModel, roster, users, shiftRules,
             const dayName = dayNameMap[day.dayOfWeek];
             const month = parseInt(day.date.split('-')[1]);
             const dayNum = parseInt(day.date.split('-')[2]);
-            const dateStr = `${month}月${dayNum}日`;
+            const dateStr = `${month}月${dayNum}日 (${dayName})`;
 
             day.shifts.forEach(shift => {
                 const key = `${day.date}_${shift.ruleId}`;
@@ -74,7 +74,8 @@ export async function exportRosterToExcel(monthModel, roster, users, shiftRules,
 
                 columns.push({
                     dayName,
-                    shiftLabel: `${dayName}(${shift.label.replace('~', '-')})`,
+                    // 格式化時段，移除 :00 並將 ~ 改為 -
+                    shiftLabel: shift.label.replace(/:00/g, '').replace('~', '-'),
                     date: day.date,
                     dateStr,
                     assignedUserId,
@@ -86,32 +87,19 @@ export async function exportRosterToExcel(monthModel, roster, users, shiftRules,
 
         if (columns.length === 0) return;
 
-        // ============ 第一列：類別（時段標籤）============
-        const categoryRow = currentRow;
-        worksheet.getCell(categoryRow, 1).value = '類別';
-        styleHeaderCell(worksheet.getCell(categoryRow, 1), 'FF9C27B0');
-
-        columns.forEach((col, index) => {
-            const cell = worksheet.getCell(categoryRow, index + 2);
-            cell.value = col.shiftLabel;
-            if (col.isWeekend) {
-                styleHeaderCell(cell, 'FFFF9800'); // 週末橙色
-            } else {
-                styleHeaderCell(cell, 'FF4CAF50'); // 平日綠色
-            }
-        });
-
-        currentRow++;
-
-        // ============ 第二列：日期 ============
+        // ============ 第一列：日期 ============
         const dateRow = currentRow;
         worksheet.getCell(dateRow, 1).value = '日期';
-        styleSubHeaderCell(worksheet.getCell(dateRow, 1));
+        styleHeaderCell(worksheet.getCell(dateRow, 1), 'FFF3E5F5'); // 極淺紫標籤
 
         columns.forEach((col, index) => {
             const cell = worksheet.getCell(dateRow, index + 2);
             cell.value = col.dateStr;
-            styleSubHeaderCell(cell);
+            if (col.isWeekend) {
+                styleHeaderCell(cell, 'FFFFF3E0'); // 週末極淺橙色
+            } else {
+                styleHeaderCell(cell, 'FFE8F5E9'); // 平日極淺綠色
+            }
         });
 
         // 合併相同日期的儲存格
@@ -130,10 +118,24 @@ export async function exportRosterToExcel(monthModel, roster, users, shiftRules,
 
         currentRow++;
 
+        // ============ 第二列：時段 ============
+        const categoryRow = currentRow;
+        worksheet.getCell(categoryRow, 1).value = '時段';
+        styleSubHeaderCell(worksheet.getCell(categoryRow, 1));
+
+        columns.forEach((col, index) => {
+            const cell = worksheet.getCell(categoryRow, index + 2);
+            cell.value = col.shiftLabel;
+            styleSubHeaderCell(cell);
+        });
+
+        currentRow++;
+
         // ============ 第三列：當日值班 ============
         const staffRow = currentRow;
         worksheet.getCell(staffRow, 1).value = '當日值班';
         styleSubHeaderCell(worksheet.getCell(staffRow, 1));
+        worksheet.getRow(staffRow).height = 30; // 增加高度
 
         columns.forEach((col, index) => {
             const cell = worksheet.getCell(staffRow, index + 2);
@@ -148,7 +150,12 @@ export async function exportRosterToExcel(monthModel, roster, users, shiftRules,
                     pattern: 'solid',
                     fgColor: { argb: userColor.bg }
                 };
-                cell.font = { color: { argb: userColor.font } };
+                // 名字加粗並確保顏色顯眼
+                cell.font = { 
+                    bold: true, 
+                    color: { argb: userColor.font },
+                    size: 11
+                };
             }
         });
 
@@ -196,7 +203,7 @@ export async function exportRosterToExcel(monthModel, roster, users, shiftRules,
 
     [1, 2, 3].forEach(col => {
         const cell = worksheet2.getCell(1, col);
-        styleHeaderCell(cell, 'FF4A90A4');
+        styleHeaderCell(cell, 'FFE0F7FA');
     });
 
     // 計算每個使用者的工時
@@ -260,13 +267,14 @@ export async function exportRosterToExcel(monthModel, roster, users, shiftRules,
 }
 
 // 樣式輔助函式
-function styleHeaderCell(cell, bgColor = 'FF4A90A4') {
+function styleHeaderCell(cell, bgColor = 'FFE0F7FA') {
     cell.fill = {
         type: 'pattern',
         pattern: 'solid',
         fgColor: { argb: bgColor }
     };
-    cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    // 移除粗體，由於背景變淡，將文字顏色改為黑色以增加視覺對比
+    cell.font = { bold: false, color: { argb: 'FF000000' } };
     cell.alignment = { horizontal: 'center', vertical: 'middle' };
     cell.border = getThinBorder();
 }
