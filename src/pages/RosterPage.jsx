@@ -165,7 +165,6 @@ export default function RosterPage() {
     // 樂觀更新本地 roster 狀態
     const updateLocalRoster = useCallback((date, ruleId, userId) => {
         setRoster(prev => {
-            const key = `${date}_${ruleId}`;
             const filtered = prev.filter(r => !(r.date === date && r.ruleId === ruleId));
 
             if (userId) {
@@ -324,7 +323,6 @@ export default function RosterPage() {
 
             // 背景處理 Firebase - 逐一刪除
             for (const shift of dayShifts) {
-                const cellId = `${date}_${shift.ruleId}`;
                 const hasAssignment = roster.some(r => r.date === date && r.ruleId === shift.ruleId);
                 if (hasAssignment) {
                     await setRosterCell(currentMonth, date, shift.ruleId, null, user.email, {});
@@ -482,7 +480,6 @@ export default function RosterPage() {
                 : null;
             const isPending = pendingOperations.has(key);
             const userColor = assignedUser ? userColorMap[assignedUser.email] : null;
-            const isMyShift = assignedUser?.email === user?.email;
 
             // 最後的時段也需要向上展開
             const isLastShift = shiftIndex === day.shifts.length - 1;

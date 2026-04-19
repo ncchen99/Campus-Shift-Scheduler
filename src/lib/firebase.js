@@ -14,9 +14,10 @@ const firebaseConfig = {
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 
-// Auth
+// Auth（Google OAuth `hd`：引導僅使用 ncku gs Workspace 網域帳號登入） 暫時先不啟用
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
+// googleProvider.setCustomParameters({ hd: 'gs.ncku.edu.tw' });
 
 // Firestore
 export const db = getFirestore(app);

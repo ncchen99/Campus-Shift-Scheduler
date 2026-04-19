@@ -51,7 +51,7 @@ function formatICSDateTime(dateStr, timeStr, isNextDay = false) {
  * @param {string} params.month - 月份 (YYYY-MM)
  * @returns {Array} ICS 事件陣列
  */
-function generateEventsForUser({ userEmail, userName, roster, shiftRules, month }) {
+function generateEventsForUser({ userEmail, userName, roster, shiftRules }) {
     // 篩選出該使用者的班次
     const userShifts = roster.filter(r => r.assignedUserId === userEmail);
 

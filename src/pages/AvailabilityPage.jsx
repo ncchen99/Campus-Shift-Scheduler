@@ -23,7 +23,7 @@ export default function AvailabilityPage() {
     const isMobile = useMobileView();
     const [currentMonth, setCurrentMonth] = useState(getDefaultMonth());
     const [monthModel, setMonthModel] = useState(null);
-    const [shiftRules, setShiftRules] = useState([]);
+    const [, setShiftRules] = useState([]);
     const [unavailability, setUnavailability] = useState([]);
     const [specialRequest, setSpecialRequest] = useState('');
     const [loading, setLoading] = useState(true);
@@ -258,7 +258,7 @@ export default function AvailabilityPage() {
         return unavailability.some(u => u.date === date && u.ruleId === ruleId);
     };
 
-    const renderDayContent = (day, weekIndex, totalWeeks) => {
+    const renderDayContent = (day) => {
         const isClosed = isClosedDay(day.date);
 
         // 如果是閉館日，顯示閉館提示

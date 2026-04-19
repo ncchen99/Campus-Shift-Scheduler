@@ -9,7 +9,7 @@ import ViewRosterPage from './pages/ViewRosterPage';
 import AdminPage from './pages/AdminPage';
 
 function AppContent() {
-  const { user, userProfile, loading, needsNameSetup, isLeader, isAdmin } = useAuth();
+  const { user, loading, needsNameSetup, isLeader, isAdmin } = useAuth();
   const [activeTab, setActiveTab] = useState('availability');
 
   // 載入中

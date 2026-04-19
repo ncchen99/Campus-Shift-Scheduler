@@ -55,7 +55,7 @@ export async function exportRosterToExcel(monthModel, roster, users, shiftRules,
     let currentRow = 1;
 
     // 處理每一週
-    weeks.forEach((week, weekIndex) => {
+    weeks.forEach((week) => {
         // 收集這一週所有的欄位資料
         const columns = []; // { dayName, shiftLabel, date, dateStr, assignedUserId, assignedName }
 

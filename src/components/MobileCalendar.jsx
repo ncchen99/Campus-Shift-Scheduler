@@ -48,7 +48,7 @@ export default function MobileCalendar({
 
     return (
         <div className={`mobile-calendar space-y-2 ${className}`}>
-            {monthModel.days.map((day, dayIndex) => {
+            {monthModel.days.map((day) => {
                 const isExpanded = expandedDates.has(day.date);
                 const dateNum = parseInt(day.date.split('-')[2]);
                 const isClosed = isClosedDay(day.date);

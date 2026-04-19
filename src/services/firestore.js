@@ -7,7 +7,6 @@ import {
     deleteDoc,
     query,
     where,
-    orderBy,
     writeBatch,
     serverTimestamp,
     collectionGroup
@@ -104,7 +103,6 @@ export async function checkNameExists(name, excludeEmail = null) {
     // 檢查是否是同一個使用者（排除自己）
     const matchedUser = snapshot.docs.find(doc => doc.id !== excludeEmail);
     if (matchedUser) {
-        const userData = matchedUser.data();
         // 隱藏部分 email 以保護隱私
         const email = matchedUser.id;
         const maskedEmail = email.substring(0, 3) + '***' + email.substring(email.indexOf('@'));
@@ -272,7 +270,7 @@ export async function saveMyUnavailability(email, month, selections) {
 
     // 新增新資料
     const ts = new Date().toISOString();
-    selections.forEach((sel, idx) => {
+    selections.forEach((sel) => {
         const newRef = doc(unavailRef, `${email}_${sel.date}_${sel.ruleId}`);
         batch.set(newRef, {
             userId: email,
@@ -463,7 +461,6 @@ export function getMonthlyWorkload(month, roster, shiftRules, users) {
 // ============ Month Model ============
 export function getMonthModel(month, shiftRules) {
     const [year, mon] = month.split('-').map(Number);
-    const firstDay = new Date(year, mon - 1, 1);
     const lastDay = new Date(year, mon, 0);
 
     const weekdayShifts = shiftRules.filter(r => r.appliesTo === 'weekday');
@@ -502,7 +499,6 @@ export function getMonthModel(month, shiftRules) {
 export function getWeeksFromMonth(monthModel) {
     const weeks = [];
     let currentWeek = [];
-    let previousDayOfWeek = -1;
 
     monthModel.days.forEach((day, index) => {
         // 如果是第一天且不是週日，需要在前面補空格
@@ -519,7 +515,6 @@ export function getWeeksFromMonth(monthModel) {
         }
 
         currentWeek.push(day);
-        previousDayOfWeek = day.dayOfWeek;
     });
 
     // 最後一週的處理
