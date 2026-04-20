@@ -16,11 +16,11 @@
 
 ## 🛠️ 技術架構
 
-- **前端**：React 18 + Vite
+- **前端**：React 19 + Vite 8
 - **樣式**：Tailwind CSS 4 + DaisyUI 5
-- **資料庫**：Firebase Firestore
+- **資料庫**：Firebase 12 (Firestore)
 - **認證**：Firebase Authentication
-- **部署**：Vercel
+- **部署**：Vercel / GitHub Pages
 
 ## 📦 快速開始
 
