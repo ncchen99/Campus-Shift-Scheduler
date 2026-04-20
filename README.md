@@ -20,7 +20,7 @@
 - **樣式**：Tailwind CSS 4 + DaisyUI 5
 - **資料庫**：Firebase 12 (Firestore)
 - **認證**：Firebase Authentication
-- **部署**：Vercel / GitHub Pages
+- **部署**：Vercel
 
 ## 📦 快速開始
 
